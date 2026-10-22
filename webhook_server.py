@@ -179,10 +179,11 @@ Nous sommes fin octobre 2026. L'année de référence est STRICTEMENT 2026 (ou 2
 {infos_client}
 Consigne de Sandrine : "{texte}"
 
-Règles de tournées :
+Règles de tournées & Absences :
 - Urrugne : Mardi, Mercredi, Samedi
 - Saint-Pée-sur-Nivelle : Jeudi, Vendredi
 - Repos : Lundi et Dimanche
+- ABSENCE VOYAGE SOLIDAIRE MAROC : STRICTEMENT FERMÉ du 31 octobre au 24 novembre 2026 inclus. AUCUN rendez-vous possible sur cette période. Reprise officielle le Mercredi 25 novembre à Urrugne.
 
 Catégories :
 - A (0h30) : petits chiens ras, retouches, chat court
