@@ -32,10 +32,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CLIENTS_PATH = os.path.join(BASE_DIR, "clients_db.json")
 
 # Configuration via variables d'environnement ou valeurs par défaut
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8901313647:AAHQUgq2EvntWZUMDMnqXWd23O9WeFU11cE")
-OPENAI_KEY = os.environ.get("OPENAI_KEY", base64.b64decode("c2stcHJvai1VNU1qbzdKeFVERlFWVmFfcndvSlFzcUxsb01tYW02bm5NSHhkLWNxbGtCTUN6UHkzTVZjZjRia1JDS25IZzlPSHJmUjhlNUREX1QzQmxia0ZKalBZZEtubGlaQUhHVUVzQjdtenVlX0ptejdhaGpSV0UwQnl0RTlRdFd4U182RnRpbWRjbXlCV3Ftc0ljLWlSWlhYRFJJWDRha0E=").decode("utf-8"))
-OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "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")
-GEMINI_KEY = os.environ.get("GEMINI_KEY", "AIzaSyA8Y-r9WDvCzAWN8SiQuA3BYqEJ6ChaiE0")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+OPENAI_KEY = os.environ.get("OPENAI_KEY", "")
+OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "")
+GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 PORT = int(os.environ.get("PORT", 10000))
 
 # Chargement de la base clients
