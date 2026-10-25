@@ -387,19 +387,18 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
         try:
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
-            update = json.loads(post_data.decode("utf-8"))
-
-            if "message" in update:
-                traiter_message_telegram(update["message"])
-
+            
+            # Reponse 200 OK immediate a Telegram pour liberer le webhook et eviter tout timeout/429
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"ok": true}')
+
+            update = json.loads(post_data.decode("utf-8"))
+            if "message" in update:
+                threading.Thread(target=traiter_message_telegram, args=(update["message"],), daemon=True).start()
         except Exception as e:
             print(f"[WEBHOOK HANDLER ERROR] : {e}", flush=True)
-            self.send_response(200)
-            self.end_headers()
 
 def run_server():
     server_address = ("", PORT)
