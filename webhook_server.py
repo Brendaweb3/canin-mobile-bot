@@ -244,6 +244,42 @@ Reponds UNIQUEMENT par un JSON valide (sans backticks markdown, sans texte avant
 
     return None
 
+APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "https://script.google.com/macros/s/AKfycbxSMe4ThGmSAFiL8_hIECTLih9AptUKGA61GCaEHQUmggZ775skFKJZqhBPV4mcRWUj/exec")
+
+def inscrire_dans_google_calendar(p: dict) -> bool:
+    try:
+        date_str = p.get('date_proposee')
+        heure_str = p.get('heure_debut', '09:00')
+        duree = int(p.get('duree_minutes', 60))
+        
+        h_formatted = heure_str.replace(":", "h")
+        title = f"{h_formatted}\n{p.get('nom_animal', 'Toilettage')}"
+        
+        start_dt = datetime.strptime(f"{date_str} {heure_str}", "%Y-%m-%d %H:%M")
+        end_dt = start_dt + timedelta(minutes=duree)
+        
+        start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
+        end_iso = end_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
+        
+        payload = {
+            "title": title,
+            "start": start_iso,
+            "end": end_iso,
+            "description": f"Toilettage {p.get('nom_animal')} - Catégorie {p.get('categorie', 'B')} ({duree} min) - Secteur {p.get('secteur')}",
+            "location": ""
+        }
+        
+        resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=20)
+        if resp.status_code == 200:
+            res_json = resp.json()
+            if res_json.get("status") == "success":
+                print(f"[CALENDAR OK] Rendez-vous Google Calendar créé : {res_json.get('eventId')}", flush=True)
+                return True
+        print(f"[CALENDAR ERROR] Réponse inattendue : {resp.status_code} {resp.text}", flush=True)
+    except Exception as e:
+        print(f"[CALENDAR EXCEPTION] : {e}", flush=True)
+    return False
+
 def traiter_message_telegram(message: dict):
     """Traite un message reçu via Webhook."""
     chat_id = str(message["chat"]["id"])
@@ -307,8 +343,9 @@ def traiter_message_telegram(message: dict):
 ⏰ *Heure* : *{heure}*
 📍 *Secteur* : *{secteur}*
 
-🎉 *« C'est noté dans ton agenda Sandrine ! Tu n'as plus à t'en occuper. »*"""
+🎉 *« Rendez-vous validé ! »*"""
 
+            inscrire_dans_google_calendar(prop)
             send_telegram_message(chat_id, msg_conf)
             USER_STATES[chat_id]["en_attente_validation"] = False
             USER_STATES[chat_id]["proposition"] = None

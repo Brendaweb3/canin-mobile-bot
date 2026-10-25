@@ -678,5 +678,13 @@
     "title": "Inconnu",
     "description": "`09:00` : Inconnu (Inconnue, Cat. `A` - 30 min)",
     "location": "Urrugne"
+  },
+  {
+    "date": "2027-02-09",
+    "time": "09:00:00",
+    "duration": 60,
+    "title": "Eden",
+    "description": "09h00 : Eden (Cat. B - 60m)",
+    "location": "Urrugne"
   }
 ]
