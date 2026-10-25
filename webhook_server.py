@@ -183,15 +183,15 @@ def trouver_client_dans_base(texte: str) -> dict:
     return None
 
 def analyser_commande_vocale(texte: str, client_reconnu: dict = None) -> dict:
-    """Analyse sémantique avec OpenRouter."""
+    """Analyse semantique avec Google Gemini (rapide, gratuit et fiable)."""
     infos_client = ""
     if client_reconnu:
         infos_client = f"""
 CLIENT RECONNU DANS LA BASE :
 - Nom Animal : {client_reconnu.get('nom_animal')}
-- Nom Maître : {client_reconnu.get('nom_maitre')}
+- Nom Maitre : {client_reconnu.get('nom_maitre')}
 - Race : {client_reconnu.get('race')}
-- Catégorie : {client_reconnu.get('cat')} ({client_reconnu.get('duree')})
+- Categorie : {client_reconnu.get('cat')} ({client_reconnu.get('duree')})
 - Secteur : {client_reconnu.get('secteur')}
 """
 
@@ -200,44 +200,48 @@ Nous sommes fin 2026. Tu peux planifier les rendez-vous sur 2026 et sur 2027 san
 {infos_client}
 Consigne de Sandrine : "{texte}"
 
-Règles de tournées & Absences :
+Regles de tournees & Absences :
 - Urrugne : Mardi, Mercredi, Samedi
-- Saint-Pée-sur-Nivelle : Jeudi, Vendredi
+- Saint-Pee-sur-Nivelle : Jeudi, Vendredi
 - Repos : Lundi et Dimanche
-- ABSENCE VOYAGE SOLIDAIRE MAROC : STRICTEMENT FERMÉ du 31 octobre au 24 novembre 2026 inclus. AUCUN rendez-vous possible sur cette période. Reprise officielle le Mercredi 25 novembre à Urrugne.
+- ABSENCE VOYAGE SOLIDAIRE MAROC : STRICTEMENT FERME du 31 octobre au 24 novembre 2026 inclus. AUCUN rendez-vous possible sur cette periode. Reprise officielle le Mercredi 25 novembre a Urrugne.
 
-Catégories :
+Categories :
 - A (0h30) : petits chiens ras, retouches, chat court
 - B (1h00) : standard (York, Bichon, Shih Tzu, Cavalier, Caniche...)
 - C (1h30) : Cocker, Labrit, chat long (Max 2 par jour)
 - D (2h00) : Gros chiens (Golden, Bouvier, Patou... Max 1 par jour)
 
-Réponds UNIQUEMENT par un JSON valide avec cette structure :
+Reponds UNIQUEMENT par un JSON valide (sans backticks markdown, sans texte avant ni apres) avec cette structure exacte :
 {{
-  "action": "PROPOSER" | "AJOUTER" | "DEPLACER" | "ANNULER" | "CONSULTER",
-  "nom_maitre": "nom du maître ou Inconnu",
+  "action": "PROPOSER",
+  "nom_maitre": "nom du maitre ou Inconnu",
   "nom_animal": "nom de l'animal",
   "race": "race de l'animal",
-  "categorie": "A" | "B" | "C" | "D",
-  "duree_minutes": 30 | 60 | 90 | 120,
+  "categorie": "A" ou "B" ou "C" ou "D",
+  "duree_minutes": 30 ou 60 ou 90 ou 120,
   "date_proposee": "YYYY-MM-DD",
   "heure_debut": "HH:MM",
-  "secteur": "Urrugne" | "Saint-Pée-sur-Nivelle",
-  "reponse_vocale": "Phrase de réponse chaleureuse, claire et précise pour Sandrine"
+  "secteur": "Urrugne" ou "Saint-Pee-sur-Nivelle",
+  "reponse_vocale": "Phrase de reponse chaleureuse, claire et precise pour Sandrine"
 }}
 """
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json"}
-    payload = {"model": "minimax/minimax-m3.1-flash:free", "messages": [{"role": "user", "content": prompt}], "temperature": 0.1}
+    if GEMINI_KEY:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={GEMINI_KEY}"
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            resp = requests.post(url, json=payload, timeout=15)
+            if resp.status_code == 200:
+                raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                clean = re.sub(r"^```json\s*|^```\s*|```$", "", raw_text, flags=re.MULTILINE).strip()
+                data = json.loads(clean)
+                print(f"[ANALYSE GEMINI REUSSIE] : {data}", flush=True)
+                return data
+            else:
+                print(f"[ANALYSE GEMINI ERROR] : {resp.status_code} {resp.text[:200]}", flush=True)
+        except Exception as ge:
+            print(f"[ANALYSE GEMINI EXCEPTION] : {ge}", flush=True)
 
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=25)
-        if resp.status_code == 200:
-            content = resp.json()["choices"][0]["message"]["content"]
-            clean = re.sub(r"```json|```", "", content).strip()
-            return json.loads(clean)
-    except Exception as e:
-        print(f"[OPENROUTER] Erreur : {e}", flush=True)
     return None
 
 def traiter_message_telegram(message: dict):
