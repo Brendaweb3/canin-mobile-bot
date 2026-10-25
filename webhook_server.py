@@ -119,26 +119,47 @@ def transcrire_audio_whisper_ou_gemini(file_id: str) -> str:
             except Exception as we:
                 print(f"[WHISPER] Exception : {we}, bascule sur Gemini...", flush=True)
 
-        # 2. Secours Google Gemini 2.5 Flash
+        # 2. Google Gemini via Files API (plusieurs modeles en secours)
         if GEMINI_KEY:
-            b64_audio = base64.b64encode(oga_bytes).decode("utf-8")
-            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
-            g_payload = {
-                "contents": [{
-                    "parts": [
-                        {"text": "Transcris fidèlement mot à mot ce message vocal en français :"},
-                        {"inline_data": {"mime_type": "audio/ogg", "data": b64_audio}}
-                    ]
-                }],
-                "generationConfig": {"temperature": 0.0}
-            }
-            g_resp = requests.post(gemini_url, json=g_payload, timeout=30)
-            if g_resp.status_code == 200:
-                candidates = g_resp.json().get("candidates", [])
-                if candidates:
-                    text = candidates[0]["content"]["parts"][0]["text"].strip()
-                    print(f"[GEMINI AUDIO] « {text} »", flush=True)
-                    return text.strip('"\'«»')
+            import time as _t
+            init = requests.post(
+                f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={GEMINI_KEY}",
+                headers={"X-Goog-Upload-Protocol": "resumable", "X-Goog-Upload-Command": "start",
+                         "X-Goog-Upload-Header-Content-Length": str(len(oga_bytes)),
+                         "X-Goog-Upload-Header-Content-Type": "audio/ogg", "Content-Type": "application/json"},
+                json={"file": {"display_name": "voice.ogg"}}, timeout=15)
+            up_url = init.headers.get("X-Goog-Upload-URL")
+            if not up_url:
+                print(f"[GEMINI AUDIO] init upload {init.status_code} {init.text[:200]}", flush=True)
+                return ""
+            up = requests.post(up_url, headers={"Content-Length": str(len(oga_bytes)), "X-Goog-Upload-Offset": "0",
+                                                "X-Goog-Upload-Command": "upload, finalize"}, data=oga_bytes, timeout=30)
+            file_uri = up.json().get("file", {}).get("uri") if up.status_code == 200 else None
+            if not file_uri:
+                print(f"[GEMINI AUDIO] upload {up.status_code} {up.text[:200]}", flush=True)
+                return ""
+            payload = {"contents": [{"parts": [
+                {"text": "Transcris fidelement mot a mot ce message vocal en francais, sans aucun commentaire :"},
+                {"file_data": {"mime_type": "audio/ogg", "file_uri": file_uri}}]}],
+                "generationConfig": {"temperature": 0.0}}
+            modeles = ["gemini-3-flash-preview", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash",
+                       "gemini-flash-latest", "gemini-2.5-pro", "gemini-pro-latest"]
+            for _tentative in range(3):
+                for modele in modeles:
+                    try:
+                        g = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{modele}:generateContent?key={GEMINI_KEY}",
+                                          json=payload, timeout=40)
+                    except Exception as ge:
+                        print(f"[GEMINI AUDIO] {modele} exception {ge}", flush=True)
+                        continue
+                    if g.status_code == 200:
+                        parts = g.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                        text = "".join(x.get("text", "") for x in parts).strip()
+                        if text:
+                            print(f"[GEMINI AUDIO via {modele}] {text}", flush=True)
+                            return text
+                    print(f"[GEMINI AUDIO] {modele} -> {g.status_code}", flush=True)
+                _t.sleep(2)
 
         return ""
     except Exception as e:
