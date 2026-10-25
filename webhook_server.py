@@ -33,7 +33,7 @@ CLIENTS_PATH = os.path.join(BASE_DIR, "clients_db.json")
 
 # Configuration via variables d'environnement ou valeurs par défaut
 _DEF_TOKEN = base64.b64decode("ODkwMTMxMzY0NzpBQUZyNEJhdnY2VnBtNEw2dnlBbDJCV0x3cWE4bGFlNVM5aw==").decode("utf-8")
-_DEF_GEMINI = base64.b64decode("QVEuQWI4Uk42SjQ2NzFyTEtPOGFlYl9oM1FFT1JIV1Y1RWtjaEYzdkZzdXlDV043ajA2LVE=").decode("utf-8")
+_DEF_GEMINI = base64.b64decode("QVEuQWI4Uk42SUQxNXJxSUlxN2k1aEtheWFsTjJFaGVfWDNHejg2ZG5EYTZoWTN2U0JvTkE=").decode("utf-8")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", _DEF_TOKEN)
 OPENAI_KEY = os.environ.get("OPENAI_KEY", "")
@@ -231,7 +231,7 @@ Reponds UNIQUEMENT par un JSON valide (sans backticks markdown, sans texte avant
 """
     if GEMINI_KEY:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={GEMINI_KEY}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
             payload = {"contents": [{"parts": [{"text": prompt}]}]}
             resp = requests.post(url, json=payload, timeout=15)
             if resp.status_code == 200:
