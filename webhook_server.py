@@ -196,7 +196,7 @@ CLIENT RECONNU DANS LA BASE :
 """
 
     prompt = f"""Tu es l'assistant de Sandrine Hiriart, toiletteuse canin (Canins Toilettage / La Canin Mobile).
-Nous sommes fin octobre 2026. L'année de référence est STRICTEMENT 2026 (ou 2027 pour janvier).
+Nous sommes fin 2026. Tu peux planifier les rendez-vous sur 2026 et sur 2027 sans restriction.
 {infos_client}
 Consigne de Sandrine : "{texte}"
 
@@ -220,7 +220,7 @@ Réponds UNIQUEMENT par un JSON valide avec cette structure :
   "race": "race de l'animal",
   "categorie": "A" | "B" | "C" | "D",
   "duree_minutes": 30 | 60 | 90 | 120,
-  "date_proposee": "2026-MM-DD",
+  "date_proposee": "YYYY-MM-DD",
   "heure_debut": "HH:MM",
   "secteur": "Urrugne" | "Saint-Pée-sur-Nivelle",
   "reponse_vocale": "Phrase de réponse chaleureuse, claire et précise pour Sandrine"
