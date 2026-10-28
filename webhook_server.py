@@ -27,6 +27,16 @@ CLIENTS_PATH = os.path.join(BASE_DIR, "clients_db.json")
 AGENDA_PATH = os.path.join(BASE_DIR, "agenda_sandrine_oct_dec_2026.md")
 STATES_PATH = os.path.join(BASE_DIR, "user_states.json")
 
+# Journal de bord en mémoire vive
+LOG_BUFFER = []
+def log(msg: str):
+    t = datetime.now().strftime("%H:%M:%S")
+    entry = f"[{t}] {msg}"
+    print(entry, flush=True)
+    LOG_BUFFER.append(entry)
+    if len(LOG_BUFFER) > 100:
+        LOG_BUFFER.pop(0)
+
 # Clés et Tokens officiels sanctuarisés
 _DEF_TOKEN = base64.b64decode("ODkwMTMxMzY0NzpBQUZyNEJhdnY2VnBtNEw2dnlBbDJCV0x3cWE4bGFlNVM5aw==").decode("utf-8")
 _DEF_GEMINI = base64.b64decode("QVEuQWI4Uk42SUQxNXJxSUlxN2k1aEtheWFsTjJFaGVfWDNHejg2ZG5EYTZoWTN2U0JvTkE=").decode("utf-8")
@@ -102,12 +112,19 @@ def send_telegram_message(chat_id: str, text: str):
 def transcrire_audio(file_id: str) -> str:
     """Transcription directe via Gemini 2.5 Flash en base64 inline (1 seul appel HTTP)."""
     try:
+        log(f"Fetching audio file_id: {file_id}")
         r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}", timeout=15).json()
-        if not r.get("ok"): return ""
+        if not r.get("ok"):
+            log(f"getFile error: {r}")
+            return ""
         file_path = r["result"]["file_path"]
+        log(f"Downloading audio from {file_path}")
         oga = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}", timeout=30).content
-        if not oga: return ""
+        if not oga:
+            log("Downloaded audio bytes are empty!")
+            return ""
         
+        log(f"Downloaded {len(oga)} bytes of audio. Sending inline base64 to Gemini 2.5 Flash...")
         b64_audio = base64.b64encode(oga).decode("utf-8")
         payload = {
             "contents": [{
@@ -124,12 +141,12 @@ def transcrire_audio(file_id: str) -> str:
         if g.status_code == 200:
             parts = g.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
             texte = "".join(x.get("text", "") for x in parts).strip()
-            print(f"[GEMINI 2.5 FLASH AUDIO OK] : « {texte} »", flush=True)
+            log(f"Gemini 2.5 Flash transcribed: « {texte} »")
             return texte
         else:
-            print(f"[GEMINI 2.5 FLASH AUDIO ERROR] : {g.status_code} {g.text[:200]}", flush=True)
+            log(f"Gemini 2.5 Flash error {g.status_code}: {g.text[:200]}")
     except Exception as e:
-        print(f"[TRANSCR EXCEPTION] : {e}", flush=True)
+        log(f"transcrire_audio Exception: {e}")
     return ""
 
 def trouver_client_dans_base(texte: str) -> dict:
@@ -398,6 +415,14 @@ def process_message(msg):
 
 class WebhookHTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/logs":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            log_text = "\n".join(LOG_BUFFER) if LOG_BUFFER else "No logs yet recorded."
+            self.wfile.write(log_text.encode("utf-8"))
+            return
+
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
@@ -416,9 +441,12 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
 
             update = json.loads(post_data.decode("utf-8"))
             if "message" in update:
-                threading.Thread(target=process_message, args=(update["message"],), daemon=True).start()
+                m = update["message"]
+                m_type = "voice" if "voice" in m else ("text" if "text" in m else "other")
+                log(f"Received Telegram message ({m_type}) from {m.get('chat', {}).get('id')}")
+                threading.Thread(target=process_message, args=(m,), daemon=True).start()
         except Exception as e:
-            print(f"[WEBHOOK HANDLER ERROR] : {e}", flush=True)
+            log(f"Webhook POST Error: {e}")
 
 def run_server():
     server_address = ("", PORT)
