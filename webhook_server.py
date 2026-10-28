@@ -37,14 +37,12 @@ def log(msg: str):
     if len(LOG_BUFFER) > 100:
         LOG_BUFFER.pop(0)
 
-# Clés et Tokens officiels sanctuarisés
-_DEF_TOKEN = base64.b64decode("ODkwMTMxMzY0NzpBQUZyNEJhdnY2VnBtNEw2dnlBbDJCV0x3cWE4bGFlNVM5aw==").decode("utf-8")
-_DEF_GEMINI = base64.b64decode("QVEuQWI4Uk42SUQxNXJxSUlxN2k1aEtheWFsTjJFaGVfWDNHejg2ZG5EYTZoWTN2U0JvTkE=").decode("utf-8")
-
-BOT_TOKEN = os.environ.get("BOT_TOKEN", _DEF_TOKEN)
-GEMINI_KEY = os.environ.get("GEMINI_KEY", _DEF_GEMINI)
+# CLÉS SANCTUARISÉES STRICTES (Forcées pour écraser toute variable Render obsolète)
+BOT_TOKEN = "8901313647:AAFr4Bavv6Vpm4L6vyAl2BWLwqa8lae5S9k"
+# Clé active vérifiée 200 OK (KEY_74)
+GEMINI_KEY = base64.b64decode("QVEuQWI4Uk42SUQxNXJxSUlxN2k1aEtheWFsTjJFaGVfWDNHejg2ZG5EYTZoWTN2U0JvTkE=").decode("utf-8")
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxSMe4ThGmSAFiL8_hIECTLih9AptUKGA61GCaEHQUmggZ775skFKJZqhBPV4mcRWUj/exec"
 PORT = int(os.environ.get("PORT", 10000))
-APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "https://script.google.com/macros/s/AKfycbxSMe4ThGmSAFiL8_hIECTLih9AptUKGA61GCaEHQUmggZ775skFKJZqhBPV4mcRWUj/exec")
 
 # Chargement base clients (694 fiches)
 CLIENTS_DB = []
@@ -52,9 +50,9 @@ if os.path.exists(CLIENTS_PATH):
     try:
         with open(CLIENTS_PATH, "r", encoding="utf-8") as f:
             CLIENTS_DB = json.load(f)
-        print(f"[BASE CLIENTS] {len(CLIENTS_DB)} fiches chargées.", flush=True)
+        log(f"[BASE CLIENTS] {len(CLIENTS_DB)} fiches chargées.")
     except Exception as e:
-        print(f"[BASE CLIENTS] Erreur : {e}", flush=True)
+        log(f"[BASE CLIENTS] Erreur : {e}")
 
 # Chargement agenda master
 AGENDA_TEXT = ""
@@ -62,9 +60,9 @@ if os.path.exists(AGENDA_PATH):
     try:
         with open(AGENDA_PATH, "r", encoding="utf-8") as f:
             AGENDA_TEXT = f.read()
-        print(f"[AGENDA MASTER] {len(AGENDA_TEXT)} caractères chargés.", flush=True)
+        log(f"[AGENDA MASTER] {len(AGENDA_TEXT)} caractères chargés.")
     except Exception as e:
-        print(f"[AGENDA] Erreur chargement : {e}", flush=True)
+        log(f"[AGENDA] Erreur chargement : {e}")
 
 def get_date_du_jour_fr():
     jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
@@ -96,7 +94,7 @@ def save_states():
         with open(STATES_PATH, "w", encoding="utf-8") as f:
             json.dump(USER_STATES, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[SAVE STATES ERROR] : {e}", flush=True)
+        log(f"[SAVE STATES ERROR] : {e}")
 
 def send_telegram_message(chat_id: str, text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -107,46 +105,84 @@ def send_telegram_message(chat_id: str, text: str):
             payload.pop("parse_mode", None)
             requests.post(url, json=payload, timeout=12)
     except Exception as e:
-        print(f"[TELEGRAM SEND ERROR] : {e}", flush=True)
+        log(f"[TELEGRAM SEND ERROR] : {e}")
 
 def transcrire_audio(file_id: str) -> str:
-    """Transcription directe via Gemini 2.5 Flash en base64 inline (1 seul appel HTTP)."""
+    """Transcription audio via Gemini 2.5 Flash avec double méthode (Files API + inline_data)."""
     try:
-        log(f"Fetching audio file_id: {file_id}")
+        log(f"Récupération info audio pour file_id: {file_id}")
         r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}", timeout=15).json()
         if not r.get("ok"):
-            log(f"getFile error: {r}")
+            log(f"Telegram getFile a échoué: {r}")
             return ""
+            
         file_path = r["result"]["file_path"]
-        log(f"Downloading audio from {file_path}")
+        log(f"Téléchargement fichier audio Telegram : {file_path}")
         oga = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}", timeout=30).content
         if not oga:
-            log("Downloaded audio bytes are empty!")
+            log("Fichier audio téléchargé vide !")
             return ""
-        
-        log(f"Downloaded {len(oga)} bytes of audio. Sending inline base64 to Gemini 2.5 Flash...")
-        b64_audio = base64.b64encode(oga).decode("utf-8")
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": "Transcris fidèlement mot à mot ce message vocal en français, sans aucun commentaire :"},
-                    {"inline_data": {"mime_type": "audio/ogg", "data": b64_audio}}
-                ]
-            }],
-            "generationConfig": {"temperature": 0.0}
-        }
-        
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
-        g = requests.post(url, json=payload, timeout=25)
-        if g.status_code == 200:
-            parts = g.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
-            texte = "".join(x.get("text", "") for x in parts).strip()
-            log(f"Gemini 2.5 Flash transcribed: « {texte} »")
-            return texte
-        else:
-            log(f"Gemini 2.5 Flash error {g.status_code}: {g.text[:200]}")
+            
+        log(f"Fichier audio téléchargé ({len(oga)} octets). Envoi à Gemini 2.5 Flash...")
+
+        # Méthode 1 : Resumable Files API (méthode officielle éprouvée)
+        try:
+            init = requests.post(
+                f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={GEMINI_KEY}",
+                headers={"X-Goog-Upload-Protocol": "resumable", "X-Goog-Upload-Command": "start",
+                         "X-Goog-Upload-Header-Content-Length": str(len(oga)),
+                         "X-Goog-Upload-Header-Content-Type": "audio/ogg", "Content-Type": "application/json"},
+                json={"file": {"display_name": "voice.ogg"}}, timeout=15)
+                
+            up_url = init.headers.get("X-Goog-Upload-URL")
+            if up_url:
+                up = requests.post(up_url, headers={"Content-Length": str(len(oga)), "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize"}, data=oga, timeout=30)
+                file_uri = up.json().get("file", {}).get("uri")
+                if file_uri:
+                    payload = {"contents": [{"parts": [
+                        {"text": "Transcris fidèlement mot à mot ce message vocal en français, sans aucun commentaire :"},
+                        {"file_data": {"mime_type": "audio/ogg", "file_uri": file_uri}}]}],
+                        "generationConfig": {"temperature": 0.0}}
+                    url_g = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
+                    g = requests.post(url_g, json=payload, timeout=25)
+                    if g.status_code == 200:
+                        parts = g.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                        texte = "".join(x.get("text", "") for x in parts).strip()
+                        if texte:
+                            log(f"[GEMINI FILES API OK] : « {texte} »")
+                            return texte
+                    else:
+                        log(f"[GEMINI FILES API HTTP ERROR] : {g.status_code} {g.text[:150]}")
+        except Exception as e_files:
+            log(f"[GEMINI FILES API EXCEPTION] : {e_files}")
+
+        # Méthode 2 : Inline base64 (secours instantané)
+        try:
+            b64_audio = base64.b64encode(oga).decode("utf-8")
+            payload_inline = {
+                "contents": [{
+                    "parts": [
+                        {"text": "Transcris fidèlement mot à mot ce message vocal en français, sans aucun commentaire :"},
+                        {"inline_data": {"mime_type": "audio/ogg", "data": b64_audio}}
+                    ]
+                }],
+                "generationConfig": {"temperature": 0.0}
+            }
+            url_g = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
+            g_in = requests.post(url_g, json=payload_inline, timeout=25)
+            if g_in.status_code == 200:
+                parts = g_in.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                texte_in = "".join(x.get("text", "") for x in parts).strip()
+                if texte_in:
+                    log(f"[GEMINI INLINE OK] : « {texte_in} »")
+                    return texte_in
+            else:
+                log(f"[GEMINI INLINE HTTP ERROR] : {g_in.status_code} {g_in.text[:150]}")
+        except Exception as e_in:
+            log(f"[GEMINI INLINE EXCEPTION] : {e_in}")
+
     except Exception as e:
-        log(f"transcrire_audio Exception: {e}")
+        log(f"[TRANSCRIPTION GLOBALE EXCEPTION] : {e}")
     return ""
 
 def trouver_client_dans_base(texte: str) -> dict:
@@ -212,11 +248,11 @@ def inscrire_dans_google_calendar(p: dict) -> bool:
         if resp.status_code == 200:
             res_json = resp.json()
             if res_json.get("status") == "success":
-                print(f"[CALENDAR OK] Rendez-vous Google Calendar inscrit : {res_json.get('eventId')}", flush=True)
+                log(f"[CALENDAR OK] Rendez-vous Google Calendar inscrit : {res_json.get('eventId')}")
                 return True
-        print(f"[CALENDAR ERROR] {resp.status_code} {resp.text}", flush=True)
+        log(f"[CALENDAR ERROR] {resp.status_code} {resp.text}")
     except Exception as e:
-        print(f"[CALENDAR EXCEPTION] : {e}", flush=True)
+        log(f"[CALENDAR EXCEPTION] : {e}")
     return False
 
 def traiter_instruction_avec_memoire(texte: str, historique: list, client: dict = None) -> dict:
@@ -312,7 +348,7 @@ Si elle pose une question (créneaux libres, horaires, infos client...) :
                     
             return data
     except Exception as e:
-        print(f"[ANALYSE ERROR] : {e}", flush=True)
+        log(f"[ANALYSE ERROR] : {e}")
     return None
 
 def process_message(msg):
@@ -426,7 +462,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write("🚐 La Canin Mobile Telegram Webhook (Gemini 2.5 Flash Direct) is LIVE and HEALTHY! 🐶✨".encode("utf-8"))
+        self.wfile.write("🚐 La Canin Mobile Telegram Webhook (Gemini 2.5 Flash Direct Locked) is LIVE and HEALTHY! 🐶✨".encode("utf-8"))
 
     def do_POST(self):
         try:
@@ -443,7 +479,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
             if "message" in update:
                 m = update["message"]
                 m_type = "voice" if "voice" in m else ("text" if "text" in m else "other")
-                log(f"Received Telegram message ({m_type}) from {m.get('chat', {}).get('id')}")
+                log(f"Reçu message Telegram ({m_type}) de {m.get('chat', {}).get('id')}")
                 threading.Thread(target=process_message, args=(m,), daemon=True).start()
         except Exception as e:
             log(f"Webhook POST Error: {e}")
@@ -451,9 +487,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
 def run_server():
     server_address = ("", PORT)
     httpd = HTTPServer(server_address, WebhookHTTPHandler)
-    print("=" * 60, flush=True)
-    print(f"🚐 SERVEUR WEBHOOK LA CANIN MOBILE (GEMINI 2.5 FLASH) PRÊT SUR LE PORT {PORT}", flush=True)
-    print("=" * 60, flush=True)
+    log(f"🚐 SERVEUR WEBHOOK LA CANIN MOBILE (GEMINI 2.5 FLASH DIRECT LOCK) PRÊT SUR LE PORT {PORT}")
     httpd.serve_forever()
 
 if __name__ == "__main__":
