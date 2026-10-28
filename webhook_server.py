@@ -3,6 +3,7 @@
 """
 Serveur Webhook Telegram Cloud Autonome pour La Canin Mobile (Sandrine Hiriart).
 Hébergé sur Render (24h/24, 7j/7 sans dépendance au PC local).
+Moteur IA unique et officiel : Google Gemini 2.5 Flash.
 """
 
 import os
@@ -26,14 +27,12 @@ CLIENTS_PATH = os.path.join(BASE_DIR, "clients_db.json")
 AGENDA_PATH = os.path.join(BASE_DIR, "agenda_sandrine_oct_dec_2026.md")
 STATES_PATH = os.path.join(BASE_DIR, "user_states.json")
 
-# Clés et Tokens sécurisés
+# Clés et Tokens officiels sanctuarisés
 _DEF_TOKEN = base64.b64decode("ODkwMTMxMzY0NzpBQUZyNEJhdnY2VnBtNEw2dnlBbDJCV0x3cWE4bGFlNVM5aw==").decode("utf-8")
 _DEF_GEMINI = base64.b64decode("QVEuQWI4Uk42SUQxNXJxSUlxN2k1aEtheWFsTjJFaGVfWDNHejg2ZG5EYTZoWTN2U0JvTkE=").decode("utf-8")
-_DEF_WHISPER = base64.b64decode("c2stcHJvai1VNU1qbzdKeFVERlFWVmFfcndvSlFzcUxsb01tYW02bm5NSHhkLWNxbGtCTUN6UHkzTVZjZjRia1JDS25IZzlPSHJmUjhlNUREX1QzQmxia0ZKalBZZEtubGlaQUhHVUVzQjdtenVlX0ptejdhaGpSV0UwQnl0RTlRdFd4U182RnRpbWRjbXlCV3Ftc0ljLWlSWlhYRFJJWDRha0E=").decode("utf-8")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", _DEF_TOKEN)
 GEMINI_KEY = os.environ.get("GEMINI_KEY", _DEF_GEMINI)
-OPENAI_KEY = os.environ.get("OPENAI_KEY", _DEF_WHISPER)
 PORT = int(os.environ.get("PORT", 10000))
 APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "https://script.google.com/macros/s/AKfycbxSMe4ThGmSAFiL8_hIECTLih9AptUKGA61GCaEHQUmggZ775skFKJZqhBPV4mcRWUj/exec")
 
@@ -101,55 +100,36 @@ def send_telegram_message(chat_id: str, text: str):
         print(f"[TELEGRAM SEND ERROR] : {e}", flush=True)
 
 def transcrire_audio(file_id: str) -> str:
+    """Transcription directe via Gemini 2.5 Flash en base64 inline (1 seul appel HTTP)."""
     try:
         r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}", timeout=15).json()
         if not r.get("ok"): return ""
         file_path = r["result"]["file_path"]
         oga = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}", timeout=30).content
+        if not oga: return ""
         
-        # 1. Tentative avec OpenAI Whisper (ultra-rapide, direct et fiable)
-        if OPENAI_KEY:
-            try:
-                whisper_url = "https://api.openai.com/v1/audio/transcriptions"
-                headers = {"Authorization": f"Bearer {OPENAI_KEY}"}
-                files = {"file": ("voice.oga", oga, "audio/ogg")}
-                data = {"model": "whisper-1", "language": "fr"}
-                w_resp = requests.post(whisper_url, headers=headers, files=files, data=data, timeout=25)
-                if w_resp.status_code == 200:
-                    text_w = w_resp.json().get("text", "").strip()
-                    if text_w:
-                        print(f"[WHISPER OK] {text_w}", flush=True)
-                        return text_w
-                else:
-                    print(f"[WHISPER ERR] {w_resp.status_code} {w_resp.text[:120]}", flush=True)
-            except Exception as we:
-                print(f"[WHISPER EXCEPTION] : {we}", flush=True)
-
-        # 2. Fallback Google Gemini Files API
-        init = requests.post(
-            f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={GEMINI_KEY}",
-            headers={"X-Goog-Upload-Protocol": "resumable", "X-Goog-Upload-Command": "start",
-                     "X-Goog-Upload-Header-Content-Length": str(len(oga)),
-                     "X-Goog-Upload-Header-Content-Type": "audio/ogg", "Content-Type": "application/json"},
-            json={"file": {"display_name": "voice.ogg"}}, timeout=15)
-        up_url = init.headers.get("X-Goog-Upload-URL")
-        if not up_url: return ""
+        b64_audio = base64.b64encode(oga).decode("utf-8")
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": "Transcris fidèlement mot à mot ce message vocal en français, sans aucun commentaire :"},
+                    {"inline_data": {"mime_type": "audio/ogg", "data": b64_audio}}
+                ]
+            }],
+            "generationConfig": {"temperature": 0.0}
+        }
         
-        up = requests.post(up_url, headers={"Content-Length": str(len(oga)), "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize"}, data=oga, timeout=30)
-        file_uri = up.json().get("file", {}).get("uri")
-        if not file_uri: return ""
-        
-        payload = {"contents": [{"parts": [
-            {"text": "Transcris fidèlement mot à mot ce message vocal en français, sans aucun commentaire :"},
-            {"file_data": {"mime_type": "audio/ogg", "file_uri": file_uri}}]}],
-            "generationConfig": {"temperature": 0.0}}
-        
-        g = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}", json=payload, timeout=25)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
+        g = requests.post(url, json=payload, timeout=25)
         if g.status_code == 200:
             parts = g.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
-            return "".join(x.get("text", "") for x in parts).strip()
+            texte = "".join(x.get("text", "") for x in parts).strip()
+            print(f"[GEMINI 2.5 FLASH AUDIO OK] : « {texte} »", flush=True)
+            return texte
+        else:
+            print(f"[GEMINI 2.5 FLASH AUDIO ERROR] : {g.status_code} {g.text[:200]}", flush=True)
     except Exception as e:
-        print(f"[TRANSCR ERROR] : {e}", flush=True)
+        print(f"[TRANSCR EXCEPTION] : {e}", flush=True)
     return ""
 
 def trouver_client_dans_base(texte: str) -> dict:
@@ -421,7 +401,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write("🚐 La Canin Mobile Telegram Webhook v2-Whisper is LIVE and HEALTHY on Cloud! 🐶✨".encode("utf-8"))
+        self.wfile.write("🚐 La Canin Mobile Telegram Webhook (Gemini 2.5 Flash Direct) is LIVE and HEALTHY! 🐶✨".encode("utf-8"))
 
     def do_POST(self):
         try:
@@ -444,7 +424,7 @@ def run_server():
     server_address = ("", PORT)
     httpd = HTTPServer(server_address, WebhookHTTPHandler)
     print("=" * 60, flush=True)
-    print(f"🚐 SERVEUR WEBHOOK LA CANIN MOBILE PRÊT SUR LE PORT {PORT}", flush=True)
+    print(f"🚐 SERVEUR WEBHOOK LA CANIN MOBILE (GEMINI 2.5 FLASH) PRÊT SUR LE PORT {PORT}", flush=True)
     print("=" * 60, flush=True)
     httpd.serve_forever()
 
