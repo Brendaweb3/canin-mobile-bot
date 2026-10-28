@@ -107,8 +107,35 @@ def send_telegram_message(chat_id: str, text: str):
     except Exception as e:
         log(f"[TELEGRAM SEND ERROR] : {e}")
 
+class TelegramTypingAction:
+    """Maintient l'animation 'en train d'écrire...' avec points clignotants en continu."""
+    def __init__(self, chat_id: str, action: str = "typing"):
+        self.chat_id = str(chat_id)
+        self.action = action
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self):
+        while not self.stop_event.is_set():
+            try:
+                requests.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendChatAction",
+                    json={"chat_id": self.chat_id, "action": self.action},
+                    timeout=3
+                )
+            except Exception:
+                pass
+            self.stop_event.wait(3.5)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop_event.set()
+
 def transcrire_audio(file_id: str) -> str:
-    """Transcription audio via Gemini 2.5 Flash avec double méthode (Files API + inline_data)."""
+    """Transcription audio via Gemini 2.5 Flash rapide (inline base64 direct prioritaire)."""
     try:
         log(f"Récupération info audio pour file_id: {file_id}")
         r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}", timeout=15).json()
@@ -123,9 +150,34 @@ def transcrire_audio(file_id: str) -> str:
             log("Fichier audio téléchargé vide !")
             return ""
             
-        log(f"Fichier audio téléchargé ({len(oga)} octets). Envoi à Gemini 2.5 Flash...")
+        log(f"Fichier audio téléchargé ({len(oga)} octets). Envoi direct à Gemini 2.5 Flash...")
 
-        # Méthode 1 : Resumable Files API (méthode officielle éprouvée)
+        # Méthode 1 : Inline base64 direct (ultra rapide ~1.8s, 1 seule requête HTTP)
+        try:
+            b64_audio = base64.b64encode(oga).decode("utf-8")
+            payload_inline = {
+                "contents": [{
+                    "parts": [
+                        {"text": "Transcris fidèlement mot à mot ce message vocal en français, sans aucun commentaire :"},
+                        {"inline_data": {"mime_type": "audio/ogg", "data": b64_audio}}
+                    ]
+                }],
+                "generationConfig": {"temperature": 0.0}
+            }
+            url_g = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
+            g_in = requests.post(url_g, json=payload_inline, timeout=20)
+            if g_in.status_code == 200:
+                parts = g_in.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                texte_in = "".join(x.get("text", "") for x in parts).strip()
+                if texte_in:
+                    log(f"[GEMINI INLINE RAPIDE OK] : « {texte_in} »")
+                    return texte_in
+            else:
+                log(f"[GEMINI INLINE HTTP ERROR] : {g_in.status_code} {g_in.text[:150]}")
+        except Exception as e_in:
+            log(f"[GEMINI INLINE EXCEPTION] : {e_in}")
+
+        # Méthode 2 : Resumable Files API (secours éprouvé)
         try:
             init = requests.post(
                 f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={GEMINI_KEY}",
@@ -155,31 +207,6 @@ def transcrire_audio(file_id: str) -> str:
                         log(f"[GEMINI FILES API HTTP ERROR] : {g.status_code} {g.text[:150]}")
         except Exception as e_files:
             log(f"[GEMINI FILES API EXCEPTION] : {e_files}")
-
-        # Méthode 2 : Inline base64 (secours instantané)
-        try:
-            b64_audio = base64.b64encode(oga).decode("utf-8")
-            payload_inline = {
-                "contents": [{
-                    "parts": [
-                        {"text": "Transcris fidèlement mot à mot ce message vocal en français, sans aucun commentaire :"},
-                        {"inline_data": {"mime_type": "audio/ogg", "data": b64_audio}}
-                    ]
-                }],
-                "generationConfig": {"temperature": 0.0}
-            }
-            url_g = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
-            g_in = requests.post(url_g, json=payload_inline, timeout=25)
-            if g_in.status_code == 200:
-                parts = g_in.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
-                texte_in = "".join(x.get("text", "") for x in parts).strip()
-                if texte_in:
-                    log(f"[GEMINI INLINE OK] : « {texte_in} »")
-                    return texte_in
-            else:
-                log(f"[GEMINI INLINE HTTP ERROR] : {g_in.status_code} {g_in.text[:150]}")
-        except Exception as e_in:
-            log(f"[GEMINI INLINE EXCEPTION] : {e_in}")
 
     except Exception as e:
         log(f"[TRANSCRIPTION GLOBALE EXCEPTION] : {e}")
@@ -355,85 +382,88 @@ def process_message(msg):
     chat_id = str(msg["chat"]["id"])
     date_du_jour = get_date_du_jour_fr()
     
-    if chat_id not in USER_STATES:
-        USER_STATES[chat_id] = {"historique": [], "last_greeted_date": ""}
-        
-    if "historique" not in USER_STATES[chat_id]:
-        USER_STATES[chat_id]["historique"] = []
-        
-    texte = ""
-    if "text" in msg:
-        texte = msg["text"].strip()
-    elif "voice" in msg:
-        send_telegram_message(chat_id, "🎧 _J'écoute ton message vocal..._")
-        texte = transcrire_audio(msg["voice"]["file_id"])
-        if not texte:
-            send_telegram_message(chat_id, "❌ Désolé Sandrine, je n'ai pas pu entendre. Peux-tu me le réenregistrer ?")
-            return
-        send_telegram_message(chat_id, f"🎙️ *J'ai compris :*\n« _{texte}_ »")
-        
-    if not texte: return
-    
-    # Salutation UNIQUEMENT si c'est la toute première interaction du jour
-    salutation = ""
-    if USER_STATES[chat_id].get("last_greeted_date") != date_du_jour:
-        salutation = f"Bonjour Sandrine, nous sommes le **{date_du_jour}**. Que puis-je faire pour toi ? Je suis prêt à prendre des rendez-vous.\n\n"
-        USER_STATES[chat_id]["last_greeted_date"] = date_du_jour
-        save_states()
-        
-    # Détection client dans le texte courant ou dans l'historique récent
-    client_rec = trouver_client_dans_base(texte)
-    if not client_rec:
-        for h in reversed(USER_STATES[chat_id]["historique"][-4:]):
-            client_rec = trouver_client_dans_base(h.get("text", ""))
-            if client_rec: break
+    with TelegramTypingAction(chat_id, "typing"):
+        if chat_id not in USER_STATES:
+            USER_STATES[chat_id] = {"historique": [], "last_greeted_date": ""}
             
-    send_telegram_message(chat_id, "⏳ _Traitement en cours..._")
-    analyse = traiter_instruction_avec_memoire(texte, USER_STATES[chat_id]["historique"], client_rec)
-    
-    # Historique de dialogue
-    USER_STATES[chat_id]["historique"].append({"role": "user", "text": texte})
-    if len(USER_STATES[chat_id]["historique"]) > 12:
-        USER_STATES[chat_id]["historique"] = USER_STATES[chat_id]["historique"][-12:]
-    save_states()
-    
-    if not analyse:
-        rep_fail = "Je n'ai pas bien saisi Sandrine. Peux-tu me redire ce que tu souhaites ?"
-        USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": rep_fail})
+        if "historique" not in USER_STATES[chat_id]:
+            USER_STATES[chat_id]["historique"] = []
+            
+        texte = ""
+        is_voice = False
+        if "text" in msg:
+            texte = msg["text"].strip()
+        elif "voice" in msg:
+            is_voice = True
+            texte = transcrire_audio(msg["voice"]["file_id"])
+            if not texte:
+                send_telegram_message(chat_id, "❌ Désolé Sandrine, je n'ai pas pu entendre. Peux-tu me le réenregistrer ?")
+                return
+            
+        if not texte: return
+        
+        # Salutation UNIQUEMENT si c'est la toute première interaction du jour
+        salutation = ""
+        if USER_STATES[chat_id].get("last_greeted_date") != date_du_jour:
+            salutation = f"Bonjour Sandrine, nous sommes le **{date_du_jour}**. Que puis-je faire pour toi ? Je suis prêt à prendre des rendez-vous.\n\n"
+            USER_STATES[chat_id]["last_greeted_date"] = date_du_jour
+            save_states()
+            
+        # Détection client dans le texte courant ou dans l'historique récent
+        client_rec = trouver_client_dans_base(texte)
+        if not client_rec:
+            for h in reversed(USER_STATES[chat_id]["historique"][-4:]):
+                client_rec = trouver_client_dans_base(h.get("text", ""))
+                if client_rec: break
+                
+        analyse = traiter_instruction_avec_memoire(texte, USER_STATES[chat_id]["historique"], client_rec)
+        
+        # Historique de dialogue
+        USER_STATES[chat_id]["historique"].append({"role": "user", "text": texte})
+        if len(USER_STATES[chat_id]["historique"]) > 12:
+            USER_STATES[chat_id]["historique"] = USER_STATES[chat_id]["historique"][-12:]
         save_states()
-        send_telegram_message(chat_id, f"{salutation}🤔 {rep_fail}")
-        return
         
-    action = analyse.get("action", "REPONDRE")
-    
-    # 1. Action : Répondre à une question
-    if action == "REPONDRE":
-        rep = analyse.get("message_reponse", "Voici ce que j'ai trouvé pour toi.")
-        USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": rep})
-        save_states()
-        send_telegram_message(chat_id, f"{salutation}💬 {rep}")
-        return
+        # Préfixe si message vocal pour afficher ce qui a été compris
+        vocal_tag = f"🎙️ _« {texte} »_\n\n" if is_voice else ""
         
-    # 2. Action : Inscrire directement dans l'agenda
-    if action == "INSCRIRE":
-        animal = analyse.get("nom_animal", "Toilettage")
-        race = analyse.get("race", "")
-        cat = analyse.get("categorie", "B")
-        dur = analyse.get("duree_minutes", 60)
-        date_p = analyse.get("date_proposee", "")
-        h = analyse.get("heure_debut", "09:00")
-        sec = analyse.get("secteur", "Urrugne")
-        maitre = analyse.get("nom_maitre", "")
-        rep_phrase = analyse.get("message_reponse", "C'est noté.")
+        if not analyse:
+            rep_fail = "Je n'ai pas bien saisi Sandrine. Peux-tu me redire ce que tu souhaites ?"
+            USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": rep_fail})
+            save_states()
+            send_telegram_message(chat_id, f"{salutation}{vocal_tag}🤔 {rep_fail}")
+            return
+            
+        action = analyse.get("action", "REPONDRE")
         
-        send_telegram_message(chat_id, "📅 _Inscription immédiate dans ton agenda Google CANINS MOBILE..._")
-        succes = inscrire_dans_google_calendar(analyse)
-        status_agenda = "🎉 *👉 Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*" if succes else "⚠️ *Enregistré localement, synchronisation en attente.*"
-        
-        maitre_str = f"\n👤 *Client* : {maitre}" if maitre and maitre != "Inconnu" else ""
-        race_str = f" ({race})" if race and race not in ["race", "Inconnue", "Non précisée"] else ""
-        
-        msg_conf = f"""{salutation}✅ *RENDEZ-VOUS ENREGISTRÉ DANS TON AGENDA !*
+        # 1. Action : Répondre à une question
+        if action == "REPONDRE":
+            rep = analyse.get("message_reponse", "Voici ce que j'ai trouvé pour toi.")
+            USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": rep})
+            save_states()
+            send_telegram_message(chat_id, f"{salutation}{vocal_tag}💬 {rep}")
+            return
+            
+        # 2. Action : Inscrire directement dans l'agenda
+        if action == "INSCRIRE":
+            animal = analyse.get("nom_animal", "Toilettage")
+            race = analyse.get("race", "")
+            cat = analyse.get("categorie", "B")
+            dur = analyse.get("duree_minutes", 60)
+            date_p = analyse.get("date_proposee", "")
+            h = analyse.get("heure_debut", "09:00")
+            sec = analyse.get("secteur", "Urrugne")
+            maitre = analyse.get("nom_maitre", "")
+            rep_phrase = analyse.get("message_reponse", "C'est noté.")
+            
+            send_telegram_message(chat_id, "📅 _Inscription immédiate dans ton agenda Google CANINS MOBILE..._")
+            succes = inscrire_dans_google_calendar(analyse)
+            status_agenda = "🎉 *👉 Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*" if succes else "⚠️ *Enregistré localement, synchronisation en attente.*"
+            
+            maitre_str = f"\n👤 *Client* : {maitre}" if maitre and maitre != "Inconnu" else ""
+            race_str = f" ({race})" if race and race not in ["race", "Inconnue", "Non précisée"] else ""
+            
+            msg_conf = f"""{salutation}{vocal_tag}✅ *RENDEZ-VOUS ENREGISTRÉ DANS TON AGENDA !*
 
 🐾 *Animal* : *{animal}*{race_str}{maitre_str}
 ⏱️ *Catégorie* : `Cat. {cat}` ({dur} min)
@@ -444,10 +474,10 @@ def process_message(msg):
 💬 « _{rep_phrase}_ »
 
 {status_agenda}"""
-        
-        USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": f"Rendez-vous inscrit pour {animal} le {date_p} à {h}"})
-        save_states()
-        send_telegram_message(chat_id, msg_conf)
+            
+            USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": f"Rendez-vous inscrit pour {animal} le {date_p} à {h}"})
+            save_states()
+            send_telegram_message(chat_id, msg_conf)
 
 class WebhookHTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
