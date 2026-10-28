@@ -421,7 +421,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write("🚐 La Canin Mobile Telegram Webhook is LIVE and HEALTHY on Cloud! 🐶✨".encode("utf-8"))
+        self.wfile.write("🚐 La Canin Mobile Telegram Webhook v2-Whisper is LIVE and HEALTHY on Cloud! 🐶✨".encode("utf-8"))
 
     def do_POST(self):
         try:
