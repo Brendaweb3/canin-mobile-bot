@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+client_secret.json
+start_oauth.py
+sync_google_calendar.py
+bot_direct.py

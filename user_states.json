@@ -1,0 +1,23 @@
+{
+  "6022976635": {
+    "historique": [
+      {
+        "role": "user",
+        "text": "Ajoute Pearl le 10 janvier à 10h."
+      },
+      {
+        "role": "assistant",
+        "text": "Rendez-vous inscrit pour Pearl le 2027-01-10 à 10:00"
+      },
+      {
+        "role": "user",
+        "text": "Est-ce que tu fonctionnes, est-ce que tu entends ma voix ?"
+      },
+      {
+        "role": "assistant",
+        "text": "Oui Sandrine, je vous entends parfaitement. Je suis à votre écoute."
+      }
+    ],
+    "last_greeted_date": "mercredi 28 octobre 2026"
+  }
+}
