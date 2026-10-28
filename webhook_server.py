@@ -29,9 +29,11 @@ STATES_PATH = os.path.join(BASE_DIR, "user_states.json")
 # Clés et Tokens sécurisés
 _DEF_TOKEN = base64.b64decode("ODkwMTMxMzY0NzpBQUZyNEJhdnY2VnBtNEw2dnlBbDJCV0x3cWE4bGFlNVM5aw==").decode("utf-8")
 _DEF_GEMINI = base64.b64decode("QVEuQWI4Uk42SUQxNXJxSUlxN2k1aEtheWFsTjJFaGVfWDNHejg2ZG5EYTZoWTN2U0JvTkE=").decode("utf-8")
+_DEF_WHISPER = base64.b64decode("c2stcHJvai1VNU1qbzdKeFVERlFWVmFfcndvSlFzcUxsb01tYW02bm5NSHhkLWNxbGtCTUN6UHkzTVZjZjRia1JDS25IZzlPSHJmUjhlNUREX1QzQmxia0ZKalBZZEtubGlaQUhHVUVzQjdtenVlX0ptejdhaGpSV0UwQnl0RTlRdFd4U182RnRpbWRjbXlCV3Ftc0ljLWlSWlhYRFJJWDRha0E=").decode("utf-8")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", _DEF_TOKEN)
 GEMINI_KEY = os.environ.get("GEMINI_KEY", _DEF_GEMINI)
+OPENAI_KEY = os.environ.get("OPENAI_KEY", _DEF_WHISPER)
 PORT = int(os.environ.get("PORT", 10000))
 APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "https://script.google.com/macros/s/AKfycbxSMe4ThGmSAFiL8_hIECTLih9AptUKGA61GCaEHQUmggZ775skFKJZqhBPV4mcRWUj/exec")
 
@@ -105,6 +107,25 @@ def transcrire_audio(file_id: str) -> str:
         file_path = r["result"]["file_path"]
         oga = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}", timeout=30).content
         
+        # 1. Tentative avec OpenAI Whisper (ultra-rapide, direct et fiable)
+        if OPENAI_KEY:
+            try:
+                whisper_url = "https://api.openai.com/v1/audio/transcriptions"
+                headers = {"Authorization": f"Bearer {OPENAI_KEY}"}
+                files = {"file": ("voice.oga", oga, "audio/ogg")}
+                data = {"model": "whisper-1", "language": "fr"}
+                w_resp = requests.post(whisper_url, headers=headers, files=files, data=data, timeout=25)
+                if w_resp.status_code == 200:
+                    text_w = w_resp.json().get("text", "").strip()
+                    if text_w:
+                        print(f"[WHISPER OK] {text_w}", flush=True)
+                        return text_w
+                else:
+                    print(f"[WHISPER ERR] {w_resp.status_code} {w_resp.text[:120]}", flush=True)
+            except Exception as we:
+                print(f"[WHISPER EXCEPTION] : {we}", flush=True)
+
+        # 2. Fallback Google Gemini Files API
         init = requests.post(
             f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={GEMINI_KEY}",
             headers={"X-Goog-Upload-Protocol": "resumable", "X-Goog-Upload-Command": "start",
