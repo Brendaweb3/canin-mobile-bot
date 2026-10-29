@@ -26,6 +26,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CLIENTS_PATH = os.path.join(BASE_DIR, "clients_db.json")
 AGENDA_PATH = os.path.join(BASE_DIR, "agenda_sandrine_oct_dec_2026.md")
 STATES_PATH = os.path.join(BASE_DIR, "user_states.json")
+RESERVER_HTML_PATH = os.path.join(BASE_DIR, "reserver.html")
 
 # Journal de bord en mémoire vive
 LOG_BUFFER = []
@@ -489,6 +490,20 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(log_text.encode("utf-8"))
             return
 
+        # Affichage de la page web mobile de réservation en ligne
+        if self.path in ["/", "/reserver", "/reservation"]:
+            if os.path.exists(RESERVER_HTML_PATH):
+                try:
+                    with open(RESERVER_HTML_PATH, "r", encoding="utf-8") as f:
+                        html_content = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(html_content.encode("utf-8"))
+                    return
+                except Exception as e_html:
+                    log(f"[HTML SERVE ERROR] : {e_html}")
+
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
@@ -498,8 +513,59 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
         try:
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
-            
-            # Réponse 200 immédiate à Telegram
+
+            # 1. Route API de réservation web directe (Clients Facebook, Google, SMS...)
+            if self.path == "/api/reserver":
+                try:
+                    payload = json.loads(post_data.decode("utf-8"))
+                    nom_a = payload.get("nom_animal", "Animal")
+                    nom_m = payload.get("nom_maitre", "Client Web")
+                    tel = payload.get("telephone", "")
+                    sec = payload.get("secteur", "Urrugne")
+                    dt_p = payload.get("date_proposee", "")
+                    h_deb = payload.get("heure_debut", "09:00")
+                    cat = payload.get("categorie", "B")
+                    dur = 60
+                    if cat == "A": dur = 30
+                    elif cat == "C": dur = 90
+                    elif cat == "D": dur = 120
+                    payload["duree_minutes"] = dur
+
+                    log(f"[RÉSERVATION WEB REÇUE] {nom_a} ({nom_m} - {tel}) le {dt_p} à {h_deb} à {sec}")
+
+                    # Inscription en direct dans Google Calendar
+                    succes = inscrire_dans_google_calendar(payload)
+
+                    # Notification Telegram instantanée à Sandrine
+                    alert = f"""🔔 *NOUVELLE RÉSERVATION EN LIGNE (Site Web)* !
+
+🐾 *Animal* : *{nom_a}* ({payload.get('espece', 'Chien')} - {payload.get('race', 'Standard')})
+⏱️ *Catégorie* : `Cat. {cat}` ({dur} min)
+📅 *Date* : *{dt_p}*
+⏰ *Heure* : *{h_deb}*
+🚐 *Secteur* : *{sec}*
+👤 *Client* : *{nom_m}*
+📞 *Téléphone* : `{tel}`
+
+{"🎉 👉 *Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*" if succes else "⚠️ *Enregistré, synchronisation en attente.*"}"""
+
+                    for cid in ["6022976635", "8771111289"]:
+                        send_telegram_message(cid, alert)
+
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "success", "message": "Rendez-vous enregistré avec succès !"}).encode("utf-8"))
+                    return
+                except Exception as e_res:
+                    log(f"[API RÉSERVATION ERROR] : {e_res}")
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "error", "message": str(e_res)}).encode("utf-8"))
+                    return
+
+            # 2. Route Webhook Telegram habituelle
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

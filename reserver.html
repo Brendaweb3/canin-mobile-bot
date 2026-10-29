@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>La Canin Mobile — Réservation de Toilettage en Ligne</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #1e3a8a; /* Bleu Basque */
+      --primary-dark: #172554;
+      --secondary: #0d9488; /* Vert océan */
+      --accent: #f59e0b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(180deg, #e0f2fe 0%, #f8fafc 300px);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 16px 12px 40px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 520px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      padding: 24px 16px 20px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #dbeafe;
+      color: #1e40af;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    .title {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .notice-card {
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+      border: 1px solid #f59e0b;
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.12);
+    }
+    .notice-icon { font-size: 24px; line-height: 1; flex-shrink: 0; }
+    .notice-text { font-size: 13px; color: #78350f; font-weight: 600; }
+    .notice-text small { display: block; font-weight: 500; margin-top: 4px; color: #92400e; }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .step-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 16px;
+    }
+    .step-num {
+      width: 26px;
+      height: 26px;
+      background: var(--primary);
+      color: #fff;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .field {
+      margin-bottom: 16px;
+    }
+    .field:last-child { margin-bottom: 0; }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 15px;
+      background: #f8fafc;
+      color: var(--text);
+      transition: all 0.2s;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      background: #fff;
+      box-shadow: 0 0 0 4px rgba(30, 58, 138, 0.1);
+    }
+
+    /* Radio grid for sectors */
+    .radio-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .radio-card {
+      position: relative;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 12px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+      background: #fff;
+    }
+    .radio-card input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .radio-card:has(input:checked) {
+      border-color: var(--primary);
+      background: #eff6ff;
+      box-shadow: 0 4px 12px rgba(30, 58, 138, 0.12);
+    }
+    .radio-card .r-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--primary-dark);
+      display: block;
+    }
+    .radio-card .r-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      display: block;
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, #1e3a8a 0%, #0d9488 100%);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 10px 20px rgba(13, 148, 136, 0.25);
+      transition: all 0.2s;
+      margin-top: 10px;
+    }
+    .btn-submit:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 26px rgba(13, 148, 136, 0.35);
+    }
+    .btn-submit:active:not(:disabled) {
+      transform: translateY(0);
+    }
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Modal / Success screen */
+    .success-screen {
+      display: none;
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .success-icon {
+      width: 72px;
+      height: 72px;
+      background: #dcfce7;
+      color: #16a34a;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 38px;
+      margin-bottom: 20px;
+    }
+    .success-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #166534;
+      margin-bottom: 10px;
+    }
+    .success-recap {
+      background: #f1f5f9;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: left;
+      font-size: 14px;
+      margin: 20px 0;
+      border: 1px solid #cbd5e1;
+    }
+    .success-recap p { margin-bottom: 8px; }
+    .success-recap p:last-child { margin-bottom: 0; }
+    .footer {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge">🚐 Camion de toilettage itinérant</div>
+      <h1 class="title">La Canin Mobile</h1>
+      <p class="subtitle">Sandrine Hiriart • Soins bienveillants chiens & chats</p>
+    </div>
+
+    <div class="notice-card">
+      <div class="notice-icon">🇲🇦</div>
+      <div class="notice-text">
+        Mission solidaire au Maroc du 1er au 23 novembre 2026
+        <small>Les réservations en ligne sont ouvertes dès maintenant pour mon retour à partir du <strong>Mardi 24 Novembre</strong>.</small>
+      </div>
+    </div>
+
+    <div id="booking-card" class="card">
+      <form id="booking-form">
+        <!-- Étape 1 : Secteur -->
+        <div class="step-title">
+          <span class="step-num">1</span> Choisissez votre secteur
+        </div>
+        <div class="field">
+          <div class="radio-grid">
+            <label class="radio-card">
+              <input type="radio" name="secteur" value="Urrugne" checked onchange="updateSectorSchedule()">
+              <span class="r-title">📍 Urrugne</span>
+              <span class="r-desc">Mar • Mer • Sam</span>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="secteur" value="Saint-Pée-sur-Nivelle" onchange="updateSectorSchedule()">
+              <span class="r-title">📍 St-Pée-sur-Nivelle</span>
+              <span class="r-desc">Jeu • Ven</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Étape 2 : L'animal -->
+        <div class="step-title" style="margin-top: 24px;">
+          <span class="step-num">2</span> Votre compagnon
+        </div>
+        <div class="field">
+          <label for="nom_animal">Nom de l'animal *</label>
+          <input type="text" id="nom_animal" name="nom_animal" placeholder="Ex: Bijou, Tom, Dolly..." required>
+        </div>
+        <div class="field" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label for="espece">Espèce</label>
+            <select id="espece" name="espece">
+              <option value="Chien">Chien 🐶</option>
+              <option value="Chat">Chat 🐱</option>
+            </select>
+          </div>
+          <div>
+            <label for="race">Race ou type</label>
+            <input type="text" id="race" name="race" placeholder="Ex: Caniche, Shih Tzu...">
+          </div>
+        </div>
+        <div class="field">
+          <label for="categorie">Prestation / Taille</label>
+          <select id="categorie" name="categorie">
+            <option value="B" selected>Taille standard / Poil moyen (~1h00)</option>
+            <option value="A">Petit poil ras / Retouche rapide (~0h30)</option>
+            <option value="C">Chien moyen poil long / Cocker (~1h30)</option>
+            <option value="D">Grand chien / Démêlage épais (~2h00)</option>
+          </select>
+        </div>
+
+        <!-- Étape 3 : Date & Heure -->
+        <div class="step-title" style="margin-top: 24px;">
+          <span class="step-num">3</span> Date & Créneau souhaité
+        </div>
+        <div class="field" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label for="date_proposee">Date (Dès le 24/11) *</label>
+            <input type="date" id="date_proposee" name="date_proposee" min="2026-11-24" value="2026-11-24" required onchange="validateDayOfWeek()">
+          </div>
+          <div>
+            <label for="heure_debut">Heure *</label>
+            <select id="heure_debut" name="heure_debut" required>
+              <option value="09:00">09h00</option>
+              <option value="10:00">10h00</option>
+              <option value="11:00">11h00</option>
+              <option value="12:00">12h00</option>
+              <option value="14:00" selected>14h00</option>
+              <option value="15:00">15h00</option>
+              <option value="16:00">16h00</option>
+            </select>
+          </div>
+        </div>
+        <p id="day-hint" style="font-size: 12px; color: var(--secondary); margin-bottom: 12px; font-weight: 600;">
+          ✓ Urrugne : rendez-vous le Mardi, Mercredi ou Samedi.
+        </p>
+
+        <!-- Étape 4 : Coordonnées -->
+        <div class="step-title" style="margin-top: 24px;">
+          <span class="step-num">4</span> Vos coordonnées
+        </div>
+        <div class="field">
+          <label for="nom_maitre">Votre Nom & Prénom *</label>
+          <input type="text" id="nom_maitre" name="nom_maitre" placeholder="Ex: Mme Graciet, M. Labarry..." required>
+        </div>
+        <div class="field">
+          <label for="telephone">Téléphone mobile (pour confirmation) *</label>
+          <input type="tel" id="telephone" name="telephone" placeholder="Ex: 06 12 34 56 78" required>
+        </div>
+
+        <button type="submit" id="btn-submit" class="btn-submit">
+          🐾 Confirmer ma réservation
+        </button>
+      </form>
+    </div>
+
+    <!-- Écran de confirmation -->
+    <div id="success-screen" class="card success-screen">
+      <div class="success-icon">✓</div>
+      <h2 class="success-title">Réservation Enregistrée !</h2>
+      <p style="font-size: 14px; color: var(--text-muted);">
+        Votre demande a été directement inscrite dans l'agenda officiel de Sandrine.
+      </p>
+
+      <div class="success-recap" id="recap-content">
+        <!-- Rempli en JS -->
+      </div>
+
+      <p style="font-size: 13px; color: var(--primary-dark); font-weight: 600; margin-top: 15px;">
+        🚐 Sandrine vous remercie et vous confirmera les détails dès son retour de mission.
+      </p>
+      <button onclick="location.reload()" class="btn-submit" style="margin-top: 20px; background: var(--primary);">
+        Prendre un autre rendez-vous
+      </button>
+    </div>
+
+    <div class="footer">
+      <p>La Canin Mobile • Toilettage professionnel à domicile & itinérant</p>
+      <p style="margin-top: 4px;">Urrugne & Saint-Pée-sur-Nivelle • Pays Basque</p>
+    </div>
+  </div>
+
+  <script>
+    function updateSectorSchedule() {
+      const secteur = document.querySelector('input[name="secteur"]:checked').value;
+      const hint = document.getElementById('day-hint');
+      const dateInput = document.getElementById('date_proposee');
+      if (secteur === 'Urrugne') {
+        hint.textContent = '✓ Urrugne : tournées le Mardi, Mercredi et Samedi.';
+        dateInput.value = '2026-11-24'; // Mardi 24 Nov
+      } else {
+        hint.textContent = '✓ Saint-Pée-sur-Nivelle : tournées le Jeudi et Vendredi.';
+        dateInput.value = '2026-11-26'; // Jeudi 26 Nov
+      }
+      validateDayOfWeek();
+    }
+
+    function validateDayOfWeek() {
+      const secteur = document.querySelector('input[name="secteur"]:checked').value;
+      const dateVal = document.getElementById('date_proposee').value;
+      if (!dateVal) return;
+      const d = new Date(dateVal + 'T00:00:00');
+      const day = d.getDay(); // 0 Dim, 1 Lun, 2 Mar, 3 Mer, 4 Jeu, 5 Ven, 6 Sam
+      const hint = document.getElementById('day-hint');
+
+      if (secteur === 'Urrugne' && ![2, 3, 6].includes(day)) {
+        hint.style.color = '#dc2626';
+        hint.textContent = '⚠️ Attention : Urrugne est le Mardi, Mercredi ou Samedi.';
+      } else if (secteur === 'Saint-Pée-sur-Nivelle' && ![4, 5].includes(day)) {
+        hint.style.color = '#dc2626';
+        hint.textContent = '⚠️ Attention : Saint-Pée est le Jeudi ou Vendredi.';
+      } else {
+        hint.style.color = 'var(--secondary)';
+        hint.textContent = '✓ Jour de tournée parfaitement adapté au secteur !';
+      }
+    }
+
+    document.getElementById('booking-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-submit');
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Enregistrement dans l\'agenda...';
+
+      const formData = new FormData(this);
+      const payload = {
+        nom_animal: formData.get('nom_animal'),
+        espece: formData.get('espece'),
+        race: formData.get('race') || 'Non précisée',
+        categorie: formData.get('categorie'),
+        date_proposee: formData.get('date_proposee'),
+        heure_debut: formData.get('heure_debut'),
+        secteur: formData.get('secteur'),
+        nom_maitre: formData.get('nom_maitre'),
+        telephone: formData.get('telephone')
+      };
+
+      try {
+        const res = await fetch('/api/reserver', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          document.getElementById('booking-card').style.display = 'none';
+          document.querySelector('.notice-card').style.display = 'none';
+          const screen = document.getElementById('success-screen');
+          screen.style.display = 'block';
+
+          document.getElementById('recap-content').innerHTML = `
+            <p>🐾 <strong>Animal :</strong> ${payload.nom_animal} (${payload.espece} ${payload.race})</p>
+            <p>📅 <strong>Date :</strong> ${payload.date_proposee} à ${payload.heure_debut}</p>
+            <p>🚐 <strong>Secteur :</strong> ${payload.secteur}</p>
+            <p>👤 <strong>Maître :</strong> ${payload.nom_maitre} (${payload.telephone})</p>
+          `;
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          alert('Erreur : ' + (data.message || 'Impossible d\'enregistrer'));
+          btn.disabled = false;
+          btn.innerHTML = '🐾 Confirmer ma réservation';
+        }
+      } catch (err) {
+        alert('Erreur réseau lors de la réservation. Veuillez réessayer.');
+        btn.disabled = false;
+        btn.innerHTML = '🐾 Confirmer ma réservation';
+      }
+    });
+  </script>
+</body>
+</html>
