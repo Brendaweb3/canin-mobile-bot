@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>La Canin Mobile — Demande de Rendez-vous</title>
+  <title>La Canin Mobile — Réservation Ferme & Directe</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -30,7 +30,7 @@
       line-height: 1.5;
     }
     .container { max-width: 480px; margin: 0 auto; }
-    .header { text-align: center; padding: 20px 10px 16px; }
+    .header { text-align: center; padding: 18px 10px 14px; }
     .badge {
       display: inline-block;
       background: #dbeafe;
@@ -126,11 +126,30 @@
       color: var(--primary-dark);
       display: block;
     }
+    .radio-card .r-spot {
+      font-size: 11px;
+      color: var(--primary);
+      font-weight: 700;
+      margin-top: 3px;
+      display: block;
+      line-height: 1.2;
+    }
     .radio-card .r-desc {
       font-size: 11px;
       color: var(--text-muted);
-      margin-top: 2px;
+      margin-top: 3px;
       display: block;
+    }
+
+    .courtesy-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 12px;
+      color: #166534;
+      line-height: 1.45;
+      margin-top: 18px;
     }
 
     .btn-submit {
@@ -145,11 +164,15 @@
       cursor: pointer;
       margin-top: 15px;
     }
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
 
     .success {
       display: none;
       text-align: center;
-      padding: 30px 10px;
+      padding: 24px 12px;
     }
     .success-icon {
       width: 64px;
@@ -161,8 +184,40 @@
       align-items: center;
       justify-content: center;
       font-size: 34px;
-      margin-bottom: 15px;
+      margin-bottom: 12px;
     }
+
+    .booking-box {
+      background: #f8fafc;
+      border: 2px dashed #0d9488;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 16px 0;
+      text-align: left;
+    }
+    .booking-box .b-row {
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .booking-box .b-row:last-child { margin-bottom: 0; }
+
+    .cancel-link {
+      display: block;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: underline;
+      margin-top: 15px;
+      cursor: pointer;
+    }
+
+    .cancel-section {
+      display: none;
+      margin-top: 15px;
+      border-top: 1px solid var(--border);
+      padding-top: 15px;
+    }
+
     .footer {
       text-align: center;
       font-size: 12px;
@@ -174,36 +229,39 @@
 <body>
   <div class="container">
     <div class="header">
-      <div class="badge">🚐 Camion de toilettage itinérant</div>
+      <div class="badge">🚐 Camion de toilettage sur emplacements fixes</div>
       <h1 class="title">La Canin Mobile</h1>
       <p class="subtitle">Sandrine Hiriart • Urrugne & Saint-Pée-sur-Nivelle</p>
     </div>
 
     <div class="notice">
-      🚐 <strong>Mission solidaire au Maroc du 1er au 23 novembre inclus.</strong><br>
-      Laissez simplement votre demande pour mon retour à partir du <strong>Mardi 24 Novembre</strong>.
+      🚐 <strong>Mission solidaire du 1er au 23 novembre inclus.</strong><br>
+      Réservation ferme et immédiate pour le retour de Sandrine à partir du <strong>Mardi 24 Novembre</strong>.
     </div>
 
+    <!-- Carte de Réservation -->
     <div id="booking-card" class="card">
       <form id="booking-form">
-        <!-- 1. Secteur -->
-        <div class="step-title">📍 1. Votre secteur habituel</div>
+        <!-- 1. Secteur & Emplacement Fixe -->
+        <div class="step-title">📍 1. Emplacement fixe souhaité</div>
         <div class="field">
           <div class="radio-grid">
             <label class="radio-card">
               <input type="radio" name="secteur" value="Urrugne" checked>
               <span class="r-title">Urrugne</span>
+              <span class="r-spot">Maison des Associations</span>
               <span class="r-desc">Mar • Mer • Sam</span>
             </label>
             <label class="radio-card">
               <input type="radio" name="secteur" value="Saint-Pée-sur-Nivelle">
-              <span class="r-title">St-Pée-sur-Nivelle</span>
+              <span class="r-title">St-Pée</span>
+              <span class="r-spot">Garage Renault</span>
               <span class="r-desc">Jeu • Ven</span>
             </label>
           </div>
         </div>
 
-        <!-- 2. Propriétaire -->
+        <!-- 2. Coordonnées -->
         <div class="step-title" style="margin-top: 20px;">👤 2. Vos coordonnées</div>
         <div class="field">
           <label for="nom_maitre">Nom & Prénom du propriétaire *</label>
@@ -214,11 +272,11 @@
           <input type="tel" id="telephone" name="telephone" placeholder="Ex: 06 12 34 56 78" required>
         </div>
 
-        <!-- 3. L'Animal -->
-        <div class="step-title" style="margin-top: 20px;">🐾 3. Votre compagnon</div>
+        <!-- 3. Animal -->
+        <div class="step-title" style="margin-top: 20px;">🐾 3. Votre animal</div>
         <div class="field" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div>
-            <label for="nom_animal">Nom de l'animal *</label>
+            <label for="nom_animal">Nom *</label>
             <input type="text" id="nom_animal" name="nom_animal" placeholder="Ex: Bijou, Tom, Dolly..." required>
           </div>
           <div>
@@ -234,36 +292,78 @@
           <input type="text" id="race" name="race" placeholder="Ex: Caniche, Bichon, Golden, Européen...">
         </div>
 
+        <!-- Note de courtoisie -->
+        <div class="courtesy-box">
+          <strong>🤝 Courtoisie & Respect du planning :</strong><br>
+          Sandrine vous accueille dans son camion sur ses emplacements fixes d'Urrugne et Saint-Pée. Un désistement imprévu chamboule toute une journée de travail et bloque d'autres animaux en attente.<br>
+          En cas d'empêchement, nous vous remercions d'avoir la courtoisie d'annuler au moins <strong>24 heures à l'avance</strong> afin de lui permettre de réorganiser sa journée.
+        </div>
+
         <button type="submit" id="btn-submit" class="btn-submit">
-          🐾 Envoyer ma demande à Sandrine
+          🐾 Obtenir mon rendez-vous ferme
         </button>
       </form>
+
+      <!-- Lien d'annulation -->
+      <a class="cancel-link" onclick="toggleCancelSection()">Annuler ou modifier un rendez-vous existant</a>
+
+      <!-- Volet d'annulation -->
+      <div id="cancel-section" class="cancel-section">
+        <div class="step-title" style="color: #b91c1c;">❌ Annulation de rendez-vous</div>
+        <div class="field">
+          <label for="cancel_tel">Votre numéro de téléphone de réservation *</label>
+          <input type="tel" id="cancel_tel" placeholder="Ex: 06 12 34 56 78">
+        </div>
+        <div class="field">
+          <label for="cancel_animal">Nom de l'animal</label>
+          <input type="text" id="cancel_animal" placeholder="Ex: Dolly">
+        </div>
+        <button type="button" onclick="soumettreAnnulation()" id="btn-cancel" class="btn-submit" style="background: #dc2626; margin-top: 10px;">
+          Confirmer l'annulation du rendez-vous
+        </button>
+        <p id="cancel-feedback" style="font-size: 13px; margin-top: 10px; font-weight: 700; text-align: center;"></p>
+      </div>
     </div>
 
-    <!-- Confirmation -->
+    <!-- Écran de Confirmation Ferme -->
     <div id="success-screen" class="card success">
       <div class="success-icon">✓</div>
-      <h2 style="color: #166534; font-size: 22px; font-weight: 800; margin-bottom: 8px;">Demande bien transmise !</h2>
-      <p style="font-size: 14px; color: var(--text-muted); line-height: 1.5;" id="recap-text"></p>
-      <p style="font-size: 13px; color: var(--primary-dark); font-weight: 700; margin-top: 15px;">
-        🚐 Sandrine analyse votre demande et les créneaux disponibles selon votre animal pour vous proposer la date idéale dès son retour de mission.
+      <h2 style="color: #166534; font-size: 22px; font-weight: 800; margin-bottom: 6px;">Rendez-vous FERMEMENT CONFIRMÉ !</h2>
+      <p style="font-size: 13px; color: var(--text-muted);">Votre créneau est d'ores et déjà inscrit et validé dans l'agenda de Sandrine.</p>
+
+      <div class="booking-box" id="booking-details">
+        <!-- Rempli en JS -->
+      </div>
+
+      <p style="font-size: 13px; color: #166534; font-weight: 700; line-height: 1.4;">
+        🚐 Aucun appel supplémentaire n'est nécessaire. Sandrine vous attendra à son camion le jour convenu !
       </p>
+
+      <div class="courtesy-box" style="text-align: left; margin-top: 15px;">
+        <strong>🤝 Rappel courtoisie :</strong> En cas d'empêchement imprévu, merci de prévenir au moins 24h à l'avance pour permettre la réorganisation de la journée de Sandrine.
+      </div>
+
       <button onclick="location.reload()" class="btn-submit" style="margin-top: 20px; background: var(--primary);">
         Prendre un autre rendez-vous
       </button>
     </div>
 
     <div class="footer">
-      <p>La Canin Mobile • Toilettage professionnel à domicile & itinérant</p>
+      <p>La Canin Mobile • Sandrine Hiriart • Artisane toiletteuse</p>
     </div>
   </div>
 
   <script>
+    function toggleCancelSection() {
+      const sec = document.getElementById('cancel-section');
+      sec.style.display = (sec.style.display === 'block') ? 'none' : 'block';
+    }
+
     document.getElementById('booking-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const btn = document.getElementById('btn-submit');
       btn.disabled = true;
-      btn.innerText = 'Transmission en cours...';
+      btn.innerText = 'Attribution et validation du créneau ferme...';
 
       const formData = new FormData(this);
       const payload = {
@@ -281,17 +381,70 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        document.getElementById('booking-card').style.display = 'none';
-        document.querySelector('.notice').style.display = 'none';
-        document.getElementById('recap-text').innerHTML = `
-          Votre demande pour <strong>${payload.nom_animal}</strong> (${payload.nom_maitre}) sur le secteur de <strong>${payload.secteur}</strong> a été directement enregistrée.
-        `;
-        document.getElementById('success-screen').style.display = 'block';
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          document.getElementById('booking-card').style.display = 'none';
+          document.querySelector('.notice').style.display = 'none';
+          document.getElementById('booking-details').innerHTML = `
+            <div class="b-row">📅 <strong>Date :</strong> ${data.date_confirmee}</div>
+            <div class="b-row">⏰ <strong>Heure :</strong> ${data.heure_confirmee}</div>
+            <div class="b-row">📍 <strong>Lieu fixe :</strong> ${data.lieu} (${data.secteur})</div>
+            <div class="b-row">🐾 <strong>Animal :</strong> ${data.nom_animal}</div>
+            <div class="b-row">👤 <strong>Client :</strong> ${data.nom_maitre}</div>
+          `;
+          document.getElementById('success-screen').style.display = 'block';
+        } else {
+          alert("Erreur lors de la réservation : " + (data.message || "Merci de réessayer."));
+          btn.disabled = false;
+          btn.innerText = '🐾 Obtenir mon rendez-vous ferme';
+        }
       } catch (err) {
-        document.getElementById('booking-card').style.display = 'none';
-        document.getElementById('success-screen').style.display = 'block';
+        alert("Une erreur de connexion est survenue. Veuillez réessayer.");
+        btn.disabled = false;
+        btn.innerText = '🐾 Obtenir mon rendez-vous ferme';
       }
     });
+
+    async function soumettreAnnulation() {
+      const tel = document.getElementById('cancel_tel').value.trim();
+      const animal = document.getElementById('cancel_animal').value.trim();
+      const feedback = document.getElementById('cancel-feedback');
+
+      if (!tel) {
+        alert("Veuillez saisir votre numéro de téléphone.");
+        return;
+      }
+
+      const btn = document.getElementById('btn-cancel');
+      btn.disabled = true;
+      btn.innerText = "Recherche et annulation...";
+
+      try {
+        const res = await fetch('/api/annuler', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telephone: tel, nom_animal: animal })
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          feedback.style.color = '#16a34a';
+          feedback.innerText = "✓ " + data.message;
+          btn.innerText = "Rendez-vous annulé";
+        } else {
+          feedback.style.color = '#dc2626';
+          feedback.innerText = data.message || "Aucun rendez-vous trouvé.";
+          btn.disabled = false;
+          btn.innerText = "Confirmer l'annulation du rendez-vous";
+        }
+      } catch (err) {
+        feedback.style.color = '#dc2626';
+        feedback.innerText = "Erreur de connexion. Veuillez réessayer.";
+        btn.disabled = false;
+        btn.innerText = "Confirmer l'annulation du rendez-vous";
+      }
+    }
   </script>
 </body>
 </html>

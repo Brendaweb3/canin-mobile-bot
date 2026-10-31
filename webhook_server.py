@@ -242,6 +242,127 @@ def deduire_secteur_par_date(date_str: str) -> str:
         pass
     return "Urrugne"
 
+APPOINTMENTS_PATH = os.path.join(os.path.dirname(__file__), "appointments_to_sync.json")
+
+def load_all_appointments():
+    try:
+        if os.path.exists(APPOINTMENTS_PATH):
+            with open(APPOINTMENTS_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        log(f"[LOAD APPOINTMENTS ERROR] : {e}")
+    return []
+
+def save_all_appointments(appts):
+    try:
+        with open(APPOINTMENTS_PATH, "w", encoding="utf-8") as f:
+            json.dump(appts, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        log(f"[SAVE APPOINTMENTS ERROR] : {e}")
+
+JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+MOIS_FR = ["", "janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+
+def date_vers_texte_fr(dt_obj):
+    j_nom = JOURS_FR[dt_obj.weekday()]
+    m_nom = MOIS_FR[dt_obj.month]
+    return f"{j_nom} {dt_obj.day} {m_nom} {dt_obj.year}"
+
+def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephone: str = "") -> tuple:
+    try:
+        db_path = os.path.join(os.path.dirname(__file__), "clients_db.json")
+        if os.path.exists(db_path):
+            with open(db_path, "r", encoding="utf-8") as f_db:
+                c_db = json.load(f_db)
+            tel_clean = telephone.replace(" ", "").replace(".", "") if telephone else ""
+            nom_clean = nom_animal.strip().lower()
+            for item in c_db:
+                item_nom = item.get("nom_animal", "").lower()
+                if (nom_clean and nom_clean == item_nom) or (tel_clean and len(tel_clean) >= 8 and tel_clean in str(item).replace(" ", "")):
+                    cat = item.get("categorie", "B")
+                    dur = 60
+                    if cat == "A": dur = 30
+                    elif cat == "C": dur = 90
+                    elif cat == "D": dur = 120
+                    return cat, dur, "Fiche client retrouvée en base"
+    except Exception as e:
+        log(f"[QUALIF ERROR] : {e}")
+
+    if "chat" in (espece or "").lower():
+        return "A", 30, "Chat (Cat. A - 30 min)"
+
+    race_lower = (race or "").lower()
+    races_d = ["terre neuve", "leonberg", "saint bernard", "montagne", "bouvier bernois", "briard", "bobtail"]
+    races_c = ["golden", "labrador", "berger allemand", "berger australien", "setter", "cocker", "epagneul", "samoyede", "husky", "border collie"]
+    races_a = ["chihuahua", "pinscher", "teckel poil ras", "jack russel poil ras"]
+
+    for r in races_d:
+        if r in race_lower:
+            return "D", 120, f"Grand chien {race} (Cat. D - 2h)"
+    for r in races_c:
+        if r in race_lower:
+            return "C", 90, f"Chien moyen {race} (Cat. C - 1h30)"
+    for r in races_a:
+        if r in race_lower:
+            return "A", 30, f"Petit chien poil ras {race} (Cat. A - 30 min)"
+
+    return "B", 60, f"Standard {race or 'Chien'} (Cat. B - 1h)"
+
+def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: str = 'B') -> tuple:
+    appts = load_all_appointments()
+    valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
+
+    # Début dès le retour de Sandrine : Mardi 24 Novembre 2026
+    cur_date = datetime(2026, 11, 24)
+    end_date = datetime(2027, 2, 28)
+
+    while cur_date <= end_date:
+        if cur_date.weekday() in valid_weekdays:
+            date_str = cur_date.strftime("%Y-%m-%d")
+            day_appts = [a for a in appts if a.get("date") == date_str]
+
+            # Quotas journaliers stricts
+            cat_d_count = sum(1 for a in day_appts if "cat. d" in a.get("description", "").lower() or a.get("duration", 0) >= 120)
+            cat_c_count = sum(1 for a in day_appts if "cat. c" in a.get("description", "").lower() or a.get("duration", 0) == 90)
+
+            if cat == "D" and cat_d_count >= 1:
+                cur_date += timedelta(days=1)
+                continue
+            if cat == "C" and cat_c_count >= 2:
+                cur_date += timedelta(days=1)
+                continue
+
+            occupied = []
+            for a in day_appts:
+                t_str = a.get("time", "09:00:00")[:5]
+                try:
+                    h, m = map(int, t_str.split(":"))
+                    start_m = h * 60 + m
+                    dur = a.get("duration", 60)
+                    occupied.append((start_m, start_m + dur))
+                except Exception:
+                    pass
+            occupied.sort()
+
+            # Créneaux matin (09:00-12:00) et après-midi (14:00-17:30)
+            possible_starts = [540, 570, 600, 630, 660, 840, 870, 900, 930, 960, 990]
+            for s in possible_starts:
+                e = s + duree_minutes
+                if not ((s >= 540 and e <= 720) or (s >= 840 and e <= 1050)):
+                    continue
+                overlap = False
+                for (occ_s, occ_e) in occupied:
+                    if not (e <= occ_s or s >= occ_e):
+                        overlap = True
+                        break
+                if not overlap:
+                    h_val = s // 60
+                    m_val = s % 60
+                    return date_str, f"{h_val:02d}:{m_val:02d}", cur_date
+
+        cur_date += timedelta(days=1)
+    return None, None, None
+
 def inscrire_dans_google_calendar(p: dict) -> bool:
     try:
         date_str = p.get('date_proposee')
@@ -514,69 +635,92 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
 
-            # 1. Route API de réservation web directe (Clients Facebook, Google, SMS...)
+            # 1. Route API de réservation web directe (Attribution ferme et directe dans l'agenda)
             if self.path == "/api/reserver":
                 try:
                     payload = json.loads(post_data.decode("utf-8"))
-                    nom_a = payload.get("nom_animal", "Animal")
-                    nom_m = payload.get("nom_maitre", "Client Web")
-                    tel = payload.get("telephone", "")
-                    sec = payload.get("secteur", "Urrugne")
-                    dt_p = payload.get("date_proposee", "")
-                    h_deb = payload.get("heure_debut", "09:00")
-                    cat = payload.get("categorie", "B")
-                    esp = payload.get("espece", "Chien")
-                    race = payload.get("race", "Non précisée")
+                    nom_a = payload.get("nom_animal", "Animal").strip()
+                    nom_m = payload.get("nom_maitre", "Client").strip()
+                    tel = payload.get("telephone", "").strip()
+                    sec = payload.get("secteur", "Urrugne").strip()
+                    esp = payload.get("espece", "Chien").strip()
+                    race = payload.get("race", "Non précisée").strip()
 
-                    log(f"[DEMANDE WEB REÇUE] {nom_a} ({nom_m} - {tel}) à {sec}")
+                    log(f"[DEMANDE WEB FERME] {nom_a} ({nom_m} - {tel}) à {sec}")
 
-                    # Recherche éventuelle dans la base clients existante
-                    cat_info = "Nouveau ou à vérifier"
-                    try:
-                        db_path = os.path.join(os.path.dirname(__file__), "clients_db.json")
-                        if os.path.exists(db_path):
-                            with open(db_path, "r", encoding="utf-8") as f_db:
-                                c_db = json.load(f_db)
-                            tel_clean = tel.replace(" ", "").replace(".", "")
-                            for item in c_db:
-                                item_str = str(item)
-                                if nom_a.lower() in item.get("nom_animal", "").lower() or (tel_clean and len(tel_clean) >= 8 and tel_clean in item_str.replace(" ", "")):
-                                    cat_trouvee = item.get("categorie", "")
-                                    cat_info = f"Cat. {cat_trouvee} (Fiche client retrouvée)"
-                                    break
-                    except Exception as e_match:
-                        log(f"[DB MATCH NOTE] : {e_match}")
+                    # 1. Qualification automatique de la catégorie
+                    cat, dur, cat_source = qualifier_categorie_animal(nom_a, esp, race, tel)
 
-                    if dt_p:
-                        succes = inscrire_dans_google_calendar(payload)
-                        alert = f"""🔔 *NOUVELLE RÉSERVATION EN LIGNE (Site Web)* !
+                    # 2. Recherche du premier créneau ferme disponible
+                    date_str, heure_str, dt_obj = trouver_premier_creneau_disponible(sec, dur, cat)
+
+                    if not date_str:
+                        date_str = "2026-11-24" if "urrugne" in sec.lower() else "2026-11-26"
+                        heure_str = "09:00"
+                        dt_obj = datetime.strptime(date_str, "%Y-%m-%d")
+
+                    date_fr_label = date_vers_texte_fr(dt_obj)
+                    lieu_exact = "Maison des Associations (Kixoenea)" if "urrugne" in sec.lower() else "À côté du Garage Renault"
+
+                    # 3. Préparation pour Google Calendar
+                    booking_payload = {
+                        "nom_animal": nom_a,
+                        "nom_maitre": nom_m,
+                        "telephone": tel,
+                        "secteur": sec,
+                        "date_proposee": date_str,
+                        "heure_debut": heure_str,
+                        "duree_minutes": dur,
+                        "categorie": cat,
+                        "race": race,
+                        "espece": esp,
+                        "location": lieu_exact
+                    }
+
+                    # Inscription en direct dans Google Calendar
+                    succes = inscrire_dans_google_calendar(booking_payload)
+
+                    # 4. Enregistrement local pour verrouiller le créneau immédiatement
+                    appts = load_all_appointments()
+                    appts.append({
+                        "date": date_str,
+                        "time": f"{heure_str}:00",
+                        "duration": dur,
+                        "title": f"{nom_a} ({nom_m})",
+                        "description": f"Toilettage {nom_a} - Cat. {cat} ({dur} min) - Tél: {tel} - Maître: {nom_m} - Secteur: {sec}",
+                        "location": f"{sec} - {lieu_exact}"
+                    })
+                    save_all_appointments(appts)
+
+                    # 5. Notification Telegram instantanée à Sandrine & Bernadette
+                    alert = f"""✅ *NOUVEAU RENDEZ-VOUS FERME ATTRIBUÉ & CONFIRMÉ* !
 
 🐾 *Animal* : *{nom_a}* ({esp} - {race})
-👤 *Client* : *{nom_m}*
-📞 *Téléphone* : `{tel}`
-🚐 *Secteur* : *{sec}*
-📅 *Date demandée* : *{dt_p}* à *{h_deb}*
-
-{"🎉 👉 *Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*" if succes else "⚠️ *Enregistré, synchronisation en attente.*"}"""
-                    else:
-                        alert = f"""🔔 *NOUVELLE DEMANDE DE RENDEZ-VOUS EN LIGNE* !
-
-🐾 *Animal* : *{nom_a}* ({esp} - {race})
+⏱️ *Catégorie* : `Cat. {cat}` ({dur} min) — _{cat_source}_
+📅 *Date* : *{date_fr_label}* à *{heure_str.replace(':', 'h')}*
+📍 *Lieu fixe* : *{lieu_exact}* ({sec})
 👤 *Propriétaire* : *{nom_m}*
 📞 *Téléphone* : `{tel}`
-🚐 *Secteur* : *{sec}*
-📋 *Statut base* : {cat_info}
 
-💡 *Tournée* : {sec} ({'Mar / Mer / Sam' if sec == 'Urrugne' else 'Jeu / Ven'}).
-👉 *Demande reçue : analyse des créneaux & quotas en attente pour proposition de date à votre retour.*"""
+{"🎉 👉 *Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*" if succes else "⚠️ *Enregistré dans le planning, synchronisation agenda en attente.*"}"""
 
                     for cid in ["6022976635", "8771111289"]:
                         send_telegram_message(cid, alert)
 
+                    response_data = {
+                        "status": "success",
+                        "date_confirmee": date_fr_label,
+                        "heure_confirmee": heure_str.replace(":", "h"),
+                        "lieu": lieu_exact,
+                        "secteur": sec,
+                        "nom_animal": nom_a,
+                        "nom_maitre": nom_m
+                    }
+
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
-                    self.wfile.write(json.dumps({"status": "success", "message": "Demande enregistrée avec succès !"}).encode("utf-8"))
+                    self.wfile.write(json.dumps(response_data).encode("utf-8"))
                     return
                 except Exception as e_res:
                     log(f"[API RÉSERVATION ERROR] : {e_res}")
@@ -584,6 +728,56 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
                     self.wfile.write(json.dumps({"status": "error", "message": str(e_res)}).encode("utf-8"))
+                    return
+
+            # 2. Route API d'annulation par courtoisie
+            if self.path == "/api/annuler":
+                try:
+                    payload = json.loads(post_data.decode("utf-8"))
+                    tel = payload.get("telephone", "").replace(" ", "").replace(".", "")
+                    nom_a = payload.get("nom_animal", "").strip().lower()
+
+                    appts = load_all_appointments()
+                    found = None
+                    new_appts = []
+                    for a in appts:
+                        if a.get("date", "") >= "2026-11-24":
+                            desc = a.get("description", "").replace(" ", "").replace(".", "").lower()
+                            title = a.get("title", "").lower()
+                            if (tel and len(tel) >= 8 and tel in desc) or (nom_a and nom_a in title):
+                                found = a
+                                continue
+                        new_appts.append(a)
+
+                    if found:
+                        save_all_appointments(new_appts)
+                        alert = f"""❌ *RENDEZ-VOUS ANNULÉ PAR LE CLIENT (Par courtoisie)*
+
+🐾 *Rendez-vous libéré* : *{found.get('title')}*
+📅 *Date* : *{found.get('date')}* à *{found.get('time', '')[:5].replace(':', 'h')}*
+📍 *Lieu* : *{found.get('location')}*
+
+👉 *Ce créneau est de nouveau libre pour un autre animal sur le site !*"""
+                        for cid in ["6022976635", "8771111289"]:
+                            send_telegram_message(cid, alert)
+
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"status": "success", "message": f"Votre rendez-vous pour {found.get('title')} a bien été annulé. Merci d'avoir prévenu pour la bonne organisation de la journée de Sandrine."}).encode("utf-8"))
+                        return
+                    else:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"status": "not_found", "message": "Aucun rendez-vous trouvé avec ce numéro de téléphone après le 24 novembre."}).encode("utf-8"))
+                        return
+                except Exception as e_annul:
+                    log(f"[API ANNULER ERROR] : {e_annul}")
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "error", "message": str(e_annul)}).encode("utf-8"))
                     return
 
             # 2. Route Webhook Telegram habituelle
