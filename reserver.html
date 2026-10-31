@@ -96,7 +96,6 @@
       box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
     }
 
-    /* Radio grid for sectors */
     .radio-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -182,29 +181,29 @@
 
     <div class="notice">
       🚐 <strong>Mission solidaire au Maroc du 1er au 23 novembre inclus.</strong><br>
-      Laissez votre demande pour mon retour à partir du <strong>Mardi 24 Novembre</strong>.
+      Laissez simplement votre demande pour mon retour à partir du <strong>Mardi 24 Novembre</strong>.
     </div>
 
     <div id="booking-card" class="card">
       <form id="booking-form">
         <!-- 1. Secteur -->
-        <div class="step-title">📍 1. Votre secteur</div>
+        <div class="step-title">📍 1. Votre secteur habituel</div>
         <div class="field">
           <div class="radio-grid">
             <label class="radio-card">
-              <input type="radio" name="secteur" value="Urrugne" checked onchange="updateSectorDates()">
+              <input type="radio" name="secteur" value="Urrugne" checked>
               <span class="r-title">Urrugne</span>
               <span class="r-desc">Mar • Mer • Sam</span>
             </label>
             <label class="radio-card">
-              <input type="radio" name="secteur" value="Saint-Pée-sur-Nivelle" onchange="updateSectorDates()">
+              <input type="radio" name="secteur" value="Saint-Pée-sur-Nivelle">
               <span class="r-title">St-Pée-sur-Nivelle</span>
               <span class="r-desc">Jeu • Ven</span>
             </label>
           </div>
         </div>
 
-        <!-- 2. Propriétaire & Coordonnées -->
+        <!-- 2. Propriétaire -->
         <div class="step-title" style="margin-top: 20px;">👤 2. Vos coordonnées</div>
         <div class="field">
           <label for="nom_maitre">Nom & Prénom du propriétaire *</label>
@@ -220,7 +219,7 @@
         <div class="field" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div>
             <label for="nom_animal">Nom de l'animal *</label>
-            <input type="text" id="nom_animal" name="nom_animal" placeholder="Ex: Bijou, Tom..." required>
+            <input type="text" id="nom_animal" name="nom_animal" placeholder="Ex: Bijou, Tom, Dolly..." required>
           </div>
           <div>
             <label for="espece">Espèce *</label>
@@ -232,17 +231,7 @@
         </div>
         <div class="field">
           <label for="race">Race (facultatif)</label>
-          <input type="text" id="race" name="race" placeholder="Ex: Caniche, Shih Tzu, Européen...">
-        </div>
-
-        <!-- 4. Date souhaitée (Date seule, ZÉRO choix de durée ou d'heure compliquée) -->
-        <div class="step-title" style="margin-top: 20px;">📅 4. Date souhaitée</div>
-        <div class="field">
-          <label for="date_proposee">Jour souhaité (Dès le 24/11) *</label>
-          <input type="date" id="date_proposee" name="date_proposee" min="2026-11-24" value="2026-11-24" required onchange="validateDay()">
-          <p id="day-hint" style="font-size: 12px; color: var(--secondary); margin-top: 6px; font-weight: 600;">
-            ✓ Urrugne : tournées le Mardi, Mercredi et Samedi.
-          </p>
+          <input type="text" id="race" name="race" placeholder="Ex: Caniche, Bichon, Golden, Européen...">
         </div>
 
         <button type="submit" id="btn-submit" class="btn-submit">
@@ -254,10 +243,10 @@
     <!-- Confirmation -->
     <div id="success-screen" class="card success">
       <div class="success-icon">✓</div>
-      <h2 style="color: #166534; font-size: 22px; font-weight: 800; margin-bottom: 8px;">Demande bien enregistrée !</h2>
+      <h2 style="color: #166534; font-size: 22px; font-weight: 800; margin-bottom: 8px;">Demande bien transmise !</h2>
       <p style="font-size: 14px; color: var(--text-muted); line-height: 1.5;" id="recap-text"></p>
       <p style="font-size: 13px; color: var(--primary-dark); font-weight: 700; margin-top: 15px;">
-        🚐 Sandrine vous remercie pour votre fidélité et vous confirmera votre rendez-vous dès son retour de mission.
+        🚐 Sandrine analyse votre demande et les créneaux disponibles selon votre animal pour vous proposer la date idéale dès son retour de mission.
       </p>
       <button onclick="location.reload()" class="btn-submit" style="margin-top: 20px; background: var(--primary);">
         Prendre un autre rendez-vous
@@ -270,45 +259,11 @@
   </div>
 
   <script>
-    function updateSectorDates() {
-      const secteur = document.querySelector('input[name="secteur"]:checked').value;
-      const hint = document.getElementById('day-hint');
-      const dateInput = document.getElementById('date_proposee');
-      if (secteur === 'Urrugne') {
-        hint.textContent = '✓ Urrugne : tournées le Mardi, Mercredi et Samedi.';
-        dateInput.value = '2026-11-24';
-      } else {
-        hint.textContent = '✓ Saint-Pée-sur-Nivelle : tournées le Jeudi et Vendredi.';
-        dateInput.value = '2026-11-26';
-      }
-      validateDay();
-    }
-
-    function validateDay() {
-      const secteur = document.querySelector('input[name="secteur"]:checked').value;
-      const dateVal = document.getElementById('date_proposee').value;
-      if (!dateVal) return;
-      const d = new Date(dateVal + 'T00:00:00');
-      const day = d.getDay();
-      const hint = document.getElementById('day-hint');
-
-      if (secteur === 'Urrugne' && ![2, 3, 6].includes(day)) {
-        hint.style.color = '#dc2626';
-        hint.textContent = '⚠️ Attention : Urrugne est le Mardi, Mercredi ou Samedi.';
-      } else if (secteur === 'Saint-Pée-sur-Nivelle' && ![4, 5].includes(day)) {
-        hint.style.color = '#dc2626';
-        hint.textContent = '⚠️ Attention : Saint-Pée est le Jeudi ou Vendredi.';
-      } else {
-        hint.style.color = 'var(--secondary)';
-        hint.textContent = '✓ Jour de tournée adapté au secteur.';
-      }
-    }
-
     document.getElementById('booking-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const btn = document.getElementById('btn-submit');
       btn.disabled = true;
-      btn.innerText = 'Enregistrement en cours...';
+      btn.innerText = 'Transmission en cours...';
 
       const formData = new FormData(this);
       const payload = {
@@ -317,8 +272,7 @@
         nom_animal: formData.get('nom_animal'),
         espece: formData.get('espece'),
         race: formData.get('race') || 'Non précisée',
-        secteur: formData.get('secteur'),
-        date_proposee: formData.get('date_proposee')
+        secteur: formData.get('secteur')
       };
 
       try {
@@ -330,7 +284,7 @@
         document.getElementById('booking-card').style.display = 'none';
         document.querySelector('.notice').style.display = 'none';
         document.getElementById('recap-text').innerHTML = `
-          Votre demande pour <strong>${payload.nom_animal}</strong> (${payload.nom_maitre}) le <strong>${payload.date_proposee}</strong> sur le secteur de <strong>${payload.secteur}</strong> a été directement transmise au planning de Sandrine.
+          Votre demande pour <strong>${payload.nom_animal}</strong> (${payload.nom_maitre}) sur le secteur de <strong>${payload.secteur}</strong> a été directement enregistrée.
         `;
         document.getElementById('success-screen').style.display = 'block';
       } catch (err) {

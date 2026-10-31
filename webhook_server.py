@@ -525,29 +525,50 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     dt_p = payload.get("date_proposee", "")
                     h_deb = payload.get("heure_debut", "09:00")
                     cat = payload.get("categorie", "B")
-                    dur = 60
-                    if cat == "A": dur = 30
-                    elif cat == "C": dur = 90
-                    elif cat == "D": dur = 120
-                    payload["duree_minutes"] = dur
+                    esp = payload.get("espece", "Chien")
+                    race = payload.get("race", "Non précisée")
 
-                    log(f"[RÉSERVATION WEB REÇUE] {nom_a} ({nom_m} - {tel}) le {dt_p} à {h_deb} à {sec}")
+                    log(f"[DEMANDE WEB REÇUE] {nom_a} ({nom_m} - {tel}) à {sec}")
 
-                    # Inscription en direct dans Google Calendar
-                    succes = inscrire_dans_google_calendar(payload)
+                    # Recherche éventuelle dans la base clients existante
+                    cat_info = "Nouveau ou à vérifier"
+                    try:
+                        db_path = os.path.join(os.path.dirname(__file__), "clients_db.json")
+                        if os.path.exists(db_path):
+                            with open(db_path, "r", encoding="utf-8") as f_db:
+                                c_db = json.load(f_db)
+                            tel_clean = tel.replace(" ", "").replace(".", "")
+                            for item in c_db:
+                                item_str = str(item)
+                                if nom_a.lower() in item.get("nom_animal", "").lower() or (tel_clean and len(tel_clean) >= 8 and tel_clean in item_str.replace(" ", "")):
+                                    cat_trouvee = item.get("categorie", "")
+                                    cat_info = f"Cat. {cat_trouvee} (Fiche client retrouvée)"
+                                    break
+                    except Exception as e_match:
+                        log(f"[DB MATCH NOTE] : {e_match}")
 
-                    # Notification Telegram instantanée à Sandrine
-                    alert = f"""🔔 *NOUVELLE RÉSERVATION EN LIGNE (Site Web)* !
+                    if dt_p:
+                        succes = inscrire_dans_google_calendar(payload)
+                        alert = f"""🔔 *NOUVELLE RÉSERVATION EN LIGNE (Site Web)* !
 
-🐾 *Animal* : *{nom_a}* ({payload.get('espece', 'Chien')} - {payload.get('race', 'Standard')})
-⏱️ *Catégorie* : `Cat. {cat}` ({dur} min)
-📅 *Date* : *{dt_p}*
-⏰ *Heure* : *{h_deb}*
-🚐 *Secteur* : *{sec}*
+🐾 *Animal* : *{nom_a}* ({esp} - {race})
 👤 *Client* : *{nom_m}*
 📞 *Téléphone* : `{tel}`
+🚐 *Secteur* : *{sec}*
+📅 *Date demandée* : *{dt_p}* à *{h_deb}*
 
 {"🎉 👉 *Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*" if succes else "⚠️ *Enregistré, synchronisation en attente.*"}"""
+                    else:
+                        alert = f"""🔔 *NOUVELLE DEMANDE DE RENDEZ-VOUS EN LIGNE* !
+
+🐾 *Animal* : *{nom_a}* ({esp} - {race})
+👤 *Propriétaire* : *{nom_m}*
+📞 *Téléphone* : `{tel}`
+🚐 *Secteur* : *{sec}*
+📋 *Statut base* : {cat_info}
+
+💡 *Tournée* : {sec} ({'Mar / Mer / Sam' if sec == 'Urrugne' else 'Jeu / Ven'}).
+👉 *Demande reçue : analyse des créneaux & quotas en attente pour proposition de date à votre retour.*"""
 
                     for cid in ["6022976635", "8771111289"]:
                         send_telegram_message(cid, alert)
@@ -555,7 +576,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
-                    self.wfile.write(json.dumps({"status": "success", "message": "Rendez-vous enregistré avec succès !"}).encode("utf-8"))
+                    self.wfile.write(json.dumps({"status": "success", "message": "Demande enregistrée avec succès !"}).encode("utf-8"))
                     return
                 except Exception as e_res:
                     log(f"[API RÉSERVATION ERROR] : {e_res}")
