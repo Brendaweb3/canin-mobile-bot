@@ -681,7 +681,7 @@ def process_message(msg):
             save_states()
             send_telegram_message(chat_id, msg_conf)
 
-def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat: str = 'B', max_jours: int = 14) -> list:
+def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat: str = 'B', max_jours: int = 14, date_debut_str: str = '') -> list:
     """Calcule tous les créneaux réels disponibles par jour, sans troubler la discrétion de Sandrine."""
     appts = load_all_appointments()
     paris_tz = timezone(timedelta(hours=1))
@@ -705,7 +705,15 @@ def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat:
                 pass
 
     valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
-    cur_date = datetime(2026, 11, 24)
+    min_date = datetime(2026, 11, 24)
+    if date_debut_str:
+        try:
+            req_d = datetime.strptime(date_debut_str, "%Y-%m-%d")
+            cur_date = max(min_date, req_d)
+        except Exception:
+            cur_date = min_date
+    else:
+        cur_date = min_date
     end_date = datetime(2027, 2, 28)
 
     resultats = []
@@ -891,8 +899,9 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     esp = payload.get("espece", "Chien")
                     race = payload.get("race", "Non précisée")
 
+                    date_deb = payload.get("date_debut", "").strip()
                     cat, dur, _ = qualifier_categorie_animal(nom_a, esp, race)
-                    dispos = obtenir_tous_les_creneaux_disponibles(sec, dur, cat, max_jours=8)
+                    dispos = obtenir_tous_les_creneaux_disponibles(sec, dur, cat, max_jours=8, date_debut_str=date_deb)
 
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")

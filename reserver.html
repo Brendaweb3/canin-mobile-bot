@@ -44,7 +44,7 @@
     .title { font-size: 26px; font-weight: 800; color: var(--primary-dark); }
     .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 
-    /* Onglets de navigation : Choix créneaux VS Dialogue */
+    /* Navigation par onglets */
     .nav-tabs {
       display: flex;
       gap: 8px;
@@ -286,6 +286,25 @@
       justify-content: center;
     }
 
+    /* Section Annulation */
+    .cancel-toggle-link {
+      display: block;
+      text-align: center;
+      margin-top: 15px;
+      color: #64748b;
+      font-size: 12.5px;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .cancel-card {
+      display: none;
+      background: #fff1f2;
+      border: 1px solid #fecdd3;
+      border-radius: 12px;
+      padding: 15px;
+      margin-top: 12px;
+    }
+
     /* Écran succès */
     .success {
       display: none;
@@ -344,7 +363,7 @@
       </button>
     </div>
 
-    <!-- ONGLET 1 : GRILLE MULTI-CRÉNEAUX AVEC CHOIX PAR JOUR -->
+    <!-- ONGLET 1 : GRILLE MULTI-CRÉNEAUX AVEC CHOIX PAR JOUR ET CALENDRIER -->
     <div id="tab-grid">
       <div class="card" id="booking-card">
         <form id="booking-form">
@@ -385,7 +404,12 @@
             </div>
           </div>
 
-          <div class="step-title" style="margin-top:10px;">🕒 3. Choisissez votre créneau disponible</div>
+          <div class="step-title" style="margin-top:10px;">🕒 3. Choisissez votre date et créneau</div>
+          <div class="field" style="background:#f1f5f9; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+            <label style="font-size:12px; color:#475569; margin-bottom:4px;">📅 À partir de quelle date ? (Pour réserver dans 1 ou 2 mois)</label>
+            <input type="date" id="date_debut" min="2026-11-24" max="2027-02-28" onchange="chargerCreneaux()">
+          </div>
+
           <div id="slots-container">
             <div style="text-align:center; padding:15px; color:#64748b; font-size:13px;">
               Chargement des créneaux en direct depuis l'agenda de Sandrine...
@@ -408,6 +432,25 @@
             ✨ Sélectionner un horaire ci-dessus
           </button>
         </form>
+
+        <!-- Lien pour annulation -->
+        <a class="cancel-toggle-link" onclick="toggleCancelSection()">
+          Besoin d'annuler ou libérer un rendez-vous déjà pris ?
+        </a>
+        <div class="cancel-card" id="cancel-section">
+          <div style="font-weight:700; font-size:13px; color:#9f1239; margin-bottom:6px;">
+            Annuler un rendez-vous (Par courtoisie)
+          </div>
+          <p style="font-size:11.5px; color:#64748b; margin-bottom:10px;">
+            Saisissez votre numéro de téléphone pour annuler votre rendez-vous et libérer la place.
+          </p>
+          <input type="tel" id="cancel_tel" placeholder="Votre numéro de téléphone" style="margin-bottom:8px;">
+          <input type="text" id="cancel_animal" placeholder="Prénom de l'animal (optionnel)" style="margin-bottom:8px;">
+          <button type="button" class="btn-submit" id="btn-cancel" onclick="soumettreAnnulation()" style="background:#e11d48; margin-top:0; padding:12px;">
+            Confirmer l'annulation
+          </button>
+          <div id="cancel-feedback" style="font-size:12px; margin-top:8px; text-align:center; font-weight:700;"></div>
+        </div>
       </div>
     </div>
 
@@ -418,7 +461,7 @@
           💬 Assistant d'accueil de Sandrine
         </div>
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-          Posez vos questions, précisez vos disponibilités (matin, après-midi, semaine prochaine), le bot consulte l'agenda et s'adapte à vous !
+          Posez vos questions par écrit, précisez vos disponibilités (matin, après-midi, dans 2 mois...), le bot consulte l'agenda et s'adapte à vous !
         </p>
 
         <div class="chat-box">
@@ -473,12 +516,18 @@ Pour quel toutou ou chat souhaitez-vous un rendez-vous (nom et race) ? Et plutô
       }
     }
 
+    function toggleCancelSection() {
+      const sec = document.getElementById('cancel-section');
+      sec.style.display = (sec.style.display === 'block') ? 'none' : 'block';
+    }
+
     async function chargerCreneaux() {
       const form = document.getElementById('booking-form');
       const secteur = form.querySelector('input[name="secteur"]:checked').value;
       const nom_animal = document.getElementById('nom_animal').value || 'Animal';
       const espece = document.getElementById('espece').value || 'Chien';
       const race = document.getElementById('race').value || 'Non précisée';
+      const date_debut = document.getElementById('date_debut').value || '';
 
       const container = document.getElementById('slots-container');
       container.innerHTML = '<div style="text-align:center; padding:15px; color:#64748b; font-size:13px;">Recherche des créneaux disponibles...</div>';
@@ -487,7 +536,7 @@ Pour quel toutou ou chat souhaitez-vous un rendez-vous (nom et race) ? Et plutô
         const res = await fetch('/api/creneaux_disponibles', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ secteur, nom_animal, espece, race })
+          body: JSON.stringify({ secteur, nom_animal, espece, race, date_debut })
         });
         const data = await res.json();
 
@@ -507,7 +556,7 @@ Pour quel toutou ou chat souhaitez-vous un rendez-vous (nom et race) ? Et plutô
           });
           container.innerHTML = html;
         } else {
-          container.innerHTML = '<div style="text-align:center; padding:15px; color:#dc2626; font-size:13px;">Aucun créneau disponible trouvé pour ce secteur dans les prochaines semaines.</div>';
+          container.innerHTML = '<div style="text-align:center; padding:15px; color:#dc2626; font-size:13px;">Aucun créneau disponible trouvé pour ce secteur sur cette période.</div>';
         }
       } catch (err) {
         container.innerHTML = '<div style="text-align:center; padding:15px; color:#dc2626; font-size:13px;">Erreur de connexion. Veuillez actualiser la page.</div>';
@@ -572,6 +621,46 @@ Pour quel toutou ou chat souhaitez-vous un rendez-vous (nom et race) ? Et plutô
       }
     });
 
+    async function soumettreAnnulation() {
+      const tel = document.getElementById('cancel_tel').value.trim();
+      const animal = document.getElementById('cancel_animal').value.trim();
+      const feedback = document.getElementById('cancel-feedback');
+
+      if (!tel) {
+        alert("Veuillez saisir votre numéro de téléphone.");
+        return;
+      }
+
+      const btn = document.getElementById('btn-cancel');
+      btn.disabled = true;
+      btn.innerText = "Recherche et annulation...";
+
+      try {
+        const res = await fetch('/api/annuler', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telephone: tel, nom_animal: animal })
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          feedback.style.color = '#16a34a';
+          feedback.innerText = "✓ " + data.message;
+          btn.innerText = "Rendez-vous annulé";
+        } else {
+          feedback.style.color = '#dc2626';
+          feedback.innerText = data.message || "Aucun rendez-vous trouvé.";
+          btn.disabled = false;
+          btn.innerText = "Confirmer l'annulation du rendez-vous";
+        }
+      } catch (err) {
+        feedback.style.color = '#dc2626';
+        feedback.innerText = "Erreur de connexion. Veuillez réessayer.";
+        btn.disabled = false;
+        btn.innerText = "Confirmer l'annulation du rendez-vous";
+      }
+    }
+
     // Chat interactif
     async function envoyerChat() {
       const input = document.getElementById('chat-input');
@@ -579,15 +668,12 @@ Pour quel toutou ou chat souhaitez-vous un rendez-vous (nom et race) ? Et plutô
       if (!text) return;
 
       const chatContainer = document.getElementById('chat-messages');
-      // Message client
       chatContainer.innerHTML += `<div class="msg-bubble msg-user">${text}</div>`;
       input.value = '';
       chatContainer.scrollTop = chatContainer.scrollHeight;
 
-      // Historique
       chatHistory.push({ role: 'user', text: text });
 
-      // Placeholder typing
       const typingId = 'typing-' + Date.now();
       chatContainer.innerHTML += `<div class="msg-bubble msg-bot" id="${typingId}"><em>En train d'écrire...</em></div>`;
       chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -616,7 +702,6 @@ Pour quel toutou ou chat souhaitez-vous un rendez-vous (nom et race) ? Et plutô
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
-    // Chargement initial des créneaux
     window.addEventListener('DOMContentLoaded', chargerCreneaux);
   </script>
 </body>
