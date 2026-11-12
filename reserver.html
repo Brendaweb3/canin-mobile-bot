@@ -480,12 +480,19 @@
     async function chargerCreneaux() {
       const form = document.getElementById('booking-form');
       const secteur = form.querySelector('input[name="secteur"]:checked').value;
-      const nom_animal = document.getElementById('nom_animal').value || 'Animal';
+      const nom_animal = (document.getElementById('nom_animal').value || '').trim();
       const espece = document.getElementById('espece').value || 'Chien';
-      const race = document.getElementById('race').value || 'Non précisée';
+      const race = (document.getElementById('race').value || '').trim();
 
       const area = document.getElementById('calendar-area');
-      area.innerHTML = '<div style="text-align:center; padding:15px; color:#64748b; font-size:13px;">Recherche des places disponibles au camion...</div>';
+
+      // Logique stricte : tant que le prénom ou la race ne sont pas renseignés, on attend pour adapter les créneaux au gabarit
+      if (!nom_animal) {
+        area.innerHTML = '<div style="background:#f8fafc; border:1.5px dashed #cbd5e1; border-radius:12px; padding:16px; text-align:center; color:#64748b; font-size:13px;">🐾 Indiquez le prénom et la race de votre animal ci-dessus pour afficher les places disponibles adaptées à son gabarit.</div>';
+        return;
+      }
+
+      area.innerHTML = '<div style="text-align:center; padding:15px; color:#64748b; font-size:13px;">Calcul des places disponibles pour ' + nom_animal + '...</div>';
 
       try {
         const res = await fetch('/api/creneaux_disponibles', {
