@@ -401,16 +401,18 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
             occupied.sort()
 
             # Plages horaires strictes de travail de Sandrine au camion :
-            # Matin : Premier rendez-vous à 09h00 (540 min), fin matinée à 12h30 (750 min)
+            # Matin : Premier départ à 09h00 (540 min), fin de matinée à 13h00 (780 min)
+            # Pause déjeuner par défaut pour le site : 13h00 à 14h00 (Sandrine reste 100% libre de poser des rdv quand elle veut)
             # Après-midi : Début à 14h00 (840 min), FIN STRICTE DU DERNIER SOIN À 18h00 (1080 min)
-            possible_starts = [540, 570, 600, 630, 660, 690, 840, 870, 900, 930, 960, 990, 1020, 1050]
+            possible_starts = [540, 570, 600, 630, 660, 690, 720, 750, 840, 870, 900, 930, 960, 990, 1020, 1050]
             for s in possible_starts:
                 e = s + duree_minutes
                 
-                # Respect absolu des heures d'ouverture :
-                # - Matin : de 09h00 à 12h30
+                # Respect des créneaux attribués aux clients web :
+                # - Matin : de 09h00 à 13h00 (dernier soin du matin termine au plus tard à 13h00)
+                # - Pause : 13h00 à 14h00 préservée pour le site
                 # - Après-midi : de 14h00 à 18h00 STRICT (aucun soin ne peut finir après 18h00)
-                is_matin = (s >= 540 and e <= 750)
+                is_matin = (s >= 540 and e <= 780)
                 is_aprem = (s >= 840 and e <= 1080)
                 if not (is_matin or is_aprem):
                     continue
