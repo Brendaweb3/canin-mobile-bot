@@ -308,8 +308,48 @@ def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephon
 
     return "B", 60, f"Standard {race or 'Chien'} (Cat. B - 1h)"
 
+def obtenir_evenements_google_calendar_direct() -> list:
+    """Interroge Google Apps Script en temps réel pour obtenir la liste exacte de TOUS les événements dans l'agenda."""
+    try:
+        url = f"{APPS_SCRIPT_URL}?start=2026-11-24T00:00:00%2B01:00&end=2027-03-01T00:00:00%2B01:00"
+        resp = requests.get(url, timeout=12)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") == "success":
+                evs = data.get("events", [])
+                log(f"[CALENDAR LIVE] {len(evs)} événements récupérés en temps réel depuis Google Agenda.")
+                return evs
+    except Exception as e:
+        log(f"[CALENDAR LIVE FETCH NOTE] : {e}")
+    return []
+
 def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: str = 'B') -> tuple:
     appts = load_all_appointments()
+    
+    # Récupération en direct des événements réels de Google Agenda
+    live_events = obtenir_evenements_google_calendar_direct()
+    for lev in live_events:
+        st_iso = lev.get("start", "")
+        end_iso = lev.get("end", "")
+        if "T" in st_iso:
+            d_part, t_part = st_iso.split("T")
+            h_clean = t_part[:5]
+            # Calcul de la durée en minutes
+            dur_calc = 60
+            try:
+                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00"))
+                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
+                dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
+            except Exception:
+                pass
+            appts.append({
+                "date": d_part,
+                "time": f"{h_clean}:00",
+                "duration": dur_calc,
+                "title": lev.get("title", ""),
+                "description": f"Événement réel Google Agenda : {lev.get('title', '')}"
+            })
+
     valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
 
     # Début dès le retour de Sandrine : Mardi 24 Novembre 2026
@@ -399,6 +439,9 @@ def inscrire_dans_google_calendar(p: dict) -> bool:
             if res_json.get("status") == "success":
                 log(f"[CALENDAR OK] Rendez-vous Google Calendar inscrit : {res_json.get('eventId')}")
                 return True
+            elif res_json.get("status") == "conflict":
+                log(f"[CALENDAR CONFLICT] Créneau refusé (déjà pris) : {res_json.get('message')}")
+                return False
         log(f"[CALENDAR ERROR] {resp.status_code} {resp.text}")
     except Exception as e:
         log(f"[CALENDAR EXCEPTION] : {e}")
