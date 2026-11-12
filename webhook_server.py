@@ -371,6 +371,23 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
                 cur_date += timedelta(days=1)
                 continue
 
+            # RÈGLE POSTURALE & SANTÉ SANDRINE (CATÉGORIE C - 1h30) :
+            # Maximum 1 chien C le matin (09h-12h30) ET 1 chien C l'après-midi (14h-18h)
+            cat_c_matin = 0
+            cat_c_aprem = 0
+            for a in day_appts:
+                is_c = ("cat. c" in a.get("description", "").lower() or a.get("duration", 0) == 90)
+                if is_c:
+                    t_str = a.get("time", "09:00:00")[:2]
+                    try:
+                        h_val_c = int(t_str)
+                        if h_val_c < 13:
+                            cat_c_matin += 1
+                        else:
+                            cat_c_aprem += 1
+                    except Exception:
+                        pass
+
             occupied = []
             for a in day_appts:
                 t_str = a.get("time", "09:00:00")[:5]
@@ -383,15 +400,29 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
                     pass
             occupied.sort()
 
-            # Créneaux matin (09:00-12:00) et après-midi (14:00-17:30)
-            possible_starts = [540, 570, 600, 630, 660, 840, 870, 900, 930, 960, 990]
+            # Plages horaires strictes de travail de Sandrine au camion :
+            # Matin : Premier rendez-vous à 09h00 (540 min), fin matinée à 12h30 (750 min)
+            # Après-midi : Début à 14h00 (840 min), FIN STRICTE DU DERNIER SOIN À 18h00 (1080 min)
+            possible_starts = [540, 570, 600, 630, 660, 690, 840, 870, 900, 930, 960, 990, 1020, 1050]
             for s in possible_starts:
                 e = s + duree_minutes
-                # Respect des plages horaires d'ouverture du camion
-                if not ((s >= 540 and e <= 720) or (s >= 840 and e <= 1050)):
+                
+                # Respect absolu des heures d'ouverture :
+                # - Matin : de 09h00 à 12h30
+                # - Après-midi : de 14h00 à 18h00 STRICT (aucun soin ne peut finir après 18h00)
+                is_matin = (s >= 540 and e <= 750)
+                is_aprem = (s >= 840 and e <= 1080)
+                if not (is_matin or is_aprem):
                     continue
 
-                # RÈGLE 2 : ZÉRO chevauchement
+                # RÈGLE CATÉGORIE C : Maximum 1 le matin et 1 l'après-midi
+                if cat == "C":
+                    if is_matin and cat_c_matin >= 1:
+                        continue # Déjà un grand chien le matin -> on cherche l'après-midi
+                    if is_aprem and cat_c_aprem >= 1:
+                        continue # Déjà un grand chien l'après-midi -> jour suivant
+
+                # RÈGLE ZÉRO CHEVAUCHEMENT : Vérification stricte avec l'agenda Google
                 overlap = False
                 for (occ_s, occ_e) in occupied:
                     if not (e <= occ_s or s >= occ_e):
@@ -399,18 +430,6 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
                         break
                 if overlap:
                     continue
-
-                # RÈGLE 3 : ANTI-CONSÉCUTIF CATÉGORIE C
-                # Interdiction formelle d'enchaîner deux chiens de Catégorie C (1h30) d'affilée !
-                if cat == "C":
-                    consecutif_c = False
-                    for (occ_s, occ_e) in occupied:
-                        if occ_e == s or occ_s == e:
-                            if (occ_e - occ_s) >= 90:
-                                consecutif_c = True
-                                break
-                    if consecutif_c:
-                        continue
 
                 h_val = s // 60
                 m_val = s % 60
@@ -425,17 +444,17 @@ def inscrire_dans_google_calendar(p: dict) -> bool:
         heure_str = p.get('heure_debut', '09:00')
         duree = int(p.get('duree_minutes', 60))
         
-        h_formatted = heure_str.replace(":", "h")
-        nom = p.get('nom_animal', 'Toilettage')
-        title = f"{h_formatted}\n{nom}"
-        
         start_dt = datetime.strptime(f"{date_str} {heure_str}", "%Y-%m-%d %H:%M")
         end_dt = start_dt + timedelta(minutes=duree)
+        
+        end_h_formatted = end_dt.strftime("%Hh%M")
+        nom = p.get('nom_animal', 'Toilettage')
+        title = f"{h_formatted} à {end_h_formatted}\n{nom}"
         
         start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
         end_iso = end_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
         
-        desc = f"Toilettage {nom} - Catégorie {p.get('categorie', 'B')} ({duree} min) - Secteur {p.get('secteur')}"
+        desc = f"DÉBUT DU SOIN : {heure_str} (Fin prévue : {end_dt.strftime('%H:%M')}) - Toilettage {nom} - Catégorie {p.get('categorie', 'B')} ({duree} min) - Secteur {p.get('secteur')}"
         if p.get('nom_maitre') and p.get('nom_maitre') != 'Inconnu':
             desc += f" - Maître : {p.get('nom_maitre')}"
         if p.get('race') and p.get('race') not in ['race', 'Inconnue', 'Non précisée']:
