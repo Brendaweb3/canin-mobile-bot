@@ -292,19 +292,59 @@ def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephon
         return "A", 30, "Chat (Cat. A - 30 min)"
 
     race_lower = (race or "").lower()
-    races_d = ["terre neuve", "leonberg", "saint bernard", "montagne", "bouvier bernois", "briard", "bobtail"]
-    races_c = ["golden", "labrador", "berger allemand", "berger australien", "setter", "cocker", "epagneul", "samoyede", "husky", "border collie"]
-    races_a = ["chihuahua", "pinscher", "teckel poil ras", "jack russel poil ras"]
+
+    # DICTIONNAIRE EXHAUSTIF DES GÉANTS & TRÈS GRANDS CHIENS (Cat. D - 2h00 strict)
+    races_d = [
+        "patou", "pyrénées", "pyrenees", "montagne des pyrénées", "montagne des pyrenees",
+        "terre neuve", "terre-neuve", "leonberg", "léonberg", "saint bernard", "saint-bernard",
+        "bouvier bernois", "briard", "bobtail", "dogue allemand", "dogue de bordeaux",
+        "mastiff", "cane corso", "malamute", "barzoï", "lévrier irlandais", "irish wolfhound",
+        "berger d'anatolie", "kangol", "berger du caucase", "akita"
+    ]
+
+    # DICTIONNAIRE EXHAUSTIF DES GRANDS CHIENS & POILS LOURDS (Cat. C - 1h30 strict)
+    races_c = [
+        "golden", "labrador", "berger allemand", "berger australien", "malinois", "beauceron",
+        "setter", "cocker", "épagneul", "epagneul", "samoyède", "samoyede", "husky",
+        "border collie", "chow", "chow-chow", "collie", "berger blanc suisse", "springer",
+        "braque", "dalmatien", "boxer", "rottweiler", "berger picard", "weimaraner", "braque de weimar"
+    ]
+
+    # PETITS CHIENS POIL RAS (Cat. A - 30 min)
+    races_a = [
+        "chihuahua", "pinscher", "teckel poil ras", "jack russel poil ras", "jack russell poil ras",
+        "whippet", "petit lévrier italien", "boston terrier", "bouledogue français poil ras"
+    ]
 
     for r in races_d:
         if r in race_lower:
-            return "D", 120, f"Grand chien {race} (Cat. D - 2h)"
+            return "D", 120, f"Chien géant / lourd {race} (Cat. D - 2h00 strict)"
     for r in races_c:
         if r in race_lower:
-            return "C", 90, f"Chien moyen {race} (Cat. C - 1h30)"
+            return "C", 90, f"Grand chien / poil fourni {race} (Cat. C - 1h30 strict)"
     for r in races_a:
         if r in race_lower:
             return "A", 30, f"Petit chien poil ras {race} (Cat. A - 30 min)"
+
+    # SECOURS INTELLIGENT PAR L'IA : Si race inconnue ou orthographe approximative, Gemini tranche selon le gabarit
+    if race_lower and race_lower not in ["non précisée", "inconnue", "chien", "race"]:
+        try:
+            url_g = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
+            prompt_q = f"""Tu es expert toiletteur canin. Pour la race '{race}', classe son gabarit de toilettage :
+A (30 min - très petit/poil ras)
+B (60 min - petit/moyen standard comme caniche, bichon, yorkshire)
+C (90 min - grand chien ou poil dense nécessitant gros séchage comme berger, golden)
+D (120 min - chien géant comme patou, terre-neuve, léonberg, st-bernard).
+Réponds STRICTEMENT par la lettre unique A, B, C ou D sans commentaire."""
+            res = requests.post(url_g, json={"contents": [{"parts": [{"text": prompt_q}]}]}, timeout=3)
+            if res.status_code == 200:
+                cat_ia = res.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip().upper()
+                if cat_ia in ["A", "B", "C", "D"]:
+                    dur_ia = {"A": 30, "B": 60, "C": 90, "D": 120}[cat_ia]
+                    log(f"[QUALIF IA GEMINI] {race} classé en Catégorie {cat_ia} ({dur_ia} min)")
+                    return cat_ia, dur_ia, f"Expertise IA pour {race} (Cat. {cat_ia} - {dur_ia} min)"
+        except Exception:
+            pass
 
     return "B", 60, f"Standard {race or 'Chien'} (Cat. B - 1h)"
 
