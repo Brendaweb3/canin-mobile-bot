@@ -13,7 +13,7 @@ import re
 import base64
 import requests
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Reconfiguration UTF-8
@@ -326,29 +326,28 @@ def obtenir_evenements_google_calendar_direct() -> list:
 def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: str = 'B') -> tuple:
     appts = load_all_appointments()
     
-    # Récupération en direct des événements réels de Google Agenda
+    # 1. Récupération en direct des événements réels de Google Agenda avec conversion fuseau horaire Europe/Paris (UTC+1)
+    paris_tz = timezone(timedelta(hours=1))
     live_events = obtenir_evenements_google_calendar_direct()
     for lev in live_events:
         st_iso = lev.get("start", "")
         end_iso = lev.get("end", "")
-        if "T" in st_iso:
-            d_part, t_part = st_iso.split("T")
-            h_clean = t_part[:5]
-            # Calcul de la durée en minutes
-            dur_calc = 60
+        if st_iso:
             try:
-                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00"))
-                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
+                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(paris_tz)
+                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(paris_tz)
+                d_part = dt_s.strftime("%Y-%m-%d")
+                h_clean = dt_s.strftime("%H:%M")
                 dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
-            except Exception:
-                pass
-            appts.append({
-                "date": d_part,
-                "time": f"{h_clean}:00",
-                "duration": dur_calc,
-                "title": lev.get("title", ""),
-                "description": f"Événement réel Google Agenda : {lev.get('title', '')}"
-            })
+                appts.append({
+                    "date": d_part,
+                    "time": f"{h_clean}:00",
+                    "duration": dur_calc,
+                    "title": lev.get("title", ""),
+                    "description": f"Événement réel Google Agenda : {lev.get('title', '')}"
+                })
+            except Exception as e_parse:
+                log(f"[PARSE ERR] : {e_parse}")
 
     valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
 
@@ -361,7 +360,7 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
             date_str = cur_date.strftime("%Y-%m-%d")
             day_appts = [a for a in appts if a.get("date") == date_str]
 
-            # Quotas journaliers stricts
+            # RÈGLE 1 : Quotas journaliers stricts (Max 1 Cat D, Max 2 Cat C par jour)
             cat_d_count = sum(1 for a in day_appts if "cat. d" in a.get("description", "").lower() or a.get("duration", 0) >= 120)
             cat_c_count = sum(1 for a in day_appts if "cat. c" in a.get("description", "").lower() or a.get("duration", 0) == 90)
 
@@ -388,17 +387,34 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
             possible_starts = [540, 570, 600, 630, 660, 840, 870, 900, 930, 960, 990]
             for s in possible_starts:
                 e = s + duree_minutes
+                # Respect des plages horaires d'ouverture du camion
                 if not ((s >= 540 and e <= 720) or (s >= 840 and e <= 1050)):
                     continue
+
+                # RÈGLE 2 : ZÉRO chevauchement
                 overlap = False
                 for (occ_s, occ_e) in occupied:
                     if not (e <= occ_s or s >= occ_e):
                         overlap = True
                         break
-                if not overlap:
-                    h_val = s // 60
-                    m_val = s % 60
-                    return date_str, f"{h_val:02d}:{m_val:02d}", cur_date
+                if overlap:
+                    continue
+
+                # RÈGLE 3 : ANTI-CONSÉCUTIF CATÉGORIE C
+                # Interdiction formelle d'enchaîner deux chiens de Catégorie C (1h30) d'affilée !
+                if cat == "C":
+                    consecutif_c = False
+                    for (occ_s, occ_e) in occupied:
+                        if occ_e == s or occ_s == e:
+                            if (occ_e - occ_s) >= 90:
+                                consecutif_c = True
+                                break
+                    if consecutif_c:
+                        continue
+
+                h_val = s // 60
+                m_val = s % 60
+                return date_str, f"{h_val:02d}:{m_val:02d}", cur_date
 
         cur_date += timedelta(days=1)
     return None, None, None
