@@ -357,6 +357,14 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
 
     while cur_date <= end_date:
         if cur_date.weekday() in valid_weekdays:
+            # BLOCAGE DE SÉCURITÉ : Mardi 24 et Jeudi 26 Novembre fermés aux nouvelles réservations
+            if cur_date.strftime("%Y-%m-%d") in ["2026-11-24", "2026-11-26"]:
+                cur_date += timedelta(days=1)
+                continue
+            # BLOCAGE DE SÉCURITÉ : Mardi 24 et Jeudi 26 Novembre fermés aux nouvelles réservations
+            if cur_date.strftime("%Y-%m-%d") in ["2026-11-24", "2026-11-26"]:
+                cur_date += timedelta(days=1)
+                continue
             date_str = cur_date.strftime("%Y-%m-%d")
             day_appts = [a for a in appts if a.get("date") == date_str]
 
@@ -715,6 +723,14 @@ def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat:
 
     while cur_date <= end_date and len(resultats) < max_jours:
         if cur_date.weekday() in valid_weekdays:
+            # BLOCAGE DE SÉCURITÉ : Mardi 24 et Jeudi 26 Novembre fermés aux nouvelles réservations
+            if cur_date.strftime("%Y-%m-%d") in ["2026-11-24", "2026-11-26"]:
+                cur_date += timedelta(days=1)
+                continue
+            # BLOCAGE DE SÉCURITÉ : Mardi 24 et Jeudi 26 Novembre fermés aux nouvelles réservations
+            if cur_date.strftime("%Y-%m-%d") in ["2026-11-24", "2026-11-26"]:
+                cur_date += timedelta(days=1)
+                continue
             date_str = cur_date.strftime("%Y-%m-%d")
             day_appts = [a for a in appts if a.get("date") == date_str]
 
