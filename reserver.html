@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>La Canin Mobile — Toilettage Itinérant</title>
+  <title>La Canin Mobile — Réservation Ferme & Directe</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -29,7 +29,7 @@
       padding: 16px 12px 40px;
       line-height: 1.5;
     }
-    .container { max-width: 460px; margin: 0 auto; }
+    .container { max-width: 480px; margin: 0 auto; }
     .header { text-align: center; padding: 18px 10px 14px; }
     .badge {
       display: inline-block;
@@ -41,8 +41,20 @@
       font-weight: 700;
       margin-bottom: 8px;
     }
-    .title { font-size: 25px; font-weight: 800; color: var(--primary-dark); }
+    .title { font-size: 26px; font-weight: 800; color: var(--primary-dark); }
     .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+    .notice {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #92400e;
+      font-weight: 600;
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
 
     .card {
       background: var(--card-bg);
@@ -50,10 +62,9 @@
       padding: 22px 18px;
       box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08);
       border: 1px solid var(--border);
-      margin-bottom: 18px;
     }
     .step-title {
-      font-size: 14.5px;
+      font-size: 15px;
       font-weight: 800;
       color: var(--primary-dark);
       margin-bottom: 12px;
@@ -61,21 +72,22 @@
       align-items: center;
       gap: 8px;
     }
-    .field { margin-bottom: 14px; }
+    .field { margin-bottom: 15px; }
+    .field:last-child { margin-bottom: 0; }
     label {
       display: block;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 700;
-      margin-bottom: 5px;
+      margin-bottom: 6px;
       color: var(--text);
     }
     input, select {
       width: 100%;
-      padding: 12px 14px;
+      padding: 13px 14px;
       border: 1.5px solid var(--border);
       border-radius: 10px;
       font-family: inherit;
-      font-size: 14px;
+      font-size: 15px;
       background: #fff;
     }
     input:focus, select:focus {
@@ -122,59 +134,22 @@
       display: block;
       line-height: 1.2;
     }
-
-    /* Grille aérée de 3 créneaux recommandés */
-    .slots-summary-box {
-      background: #f0fdfa;
-      border: 1.5px solid #99f6e4;
-      border-radius: 12px;
-      padding: 14px;
-      margin-top: 8px;
-    }
-    .slots-title {
-      font-size: 13px;
-      font-weight: 800;
-      color: #0f766e;
-      margin-bottom: 10px;
-      text-align: center;
-    }
-    .slot-row {
-      display: flex;
-      gap: 8px;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-    .slot-pill {
-      background: #fff;
-      border: 2px solid #0d9488;
-      padding: 10px 16px;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 800;
-      color: #0f766e;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-    }
-    .slot-pill .sp-date {
+    .radio-card .r-desc {
       font-size: 11px;
-      font-weight: 600;
-      color: #64748b;
+      color: var(--text-muted);
+      margin-top: 3px;
+      display: block;
     }
-    .slot-pill:hover {
-      background: #ccfbf1;
-      transform: translateY(-2px);
-    }
-    .slot-pill.selected {
-      background: #0d9488;
-      color: #fff;
-      box-shadow: 0 4px 10px rgba(13, 148, 136, 0.35);
-    }
-    .slot-pill.selected .sp-date {
-      color: #e6fffa;
+
+    .courtesy-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 12px;
+      color: #166534;
+      line-height: 1.45;
+      margin-top: 18px;
     }
 
     .btn-submit {
@@ -183,157 +158,17 @@
       color: #fff;
       border: none;
       border-radius: 12px;
-      padding: 15px;
-      font-size: 15px;
+      padding: 16px;
+      font-size: 16px;
       font-weight: 800;
       cursor: pointer;
       margin-top: 15px;
-      box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2);
     }
     .btn-submit:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
 
-    /* BULLE FLOTTANTE DE CHAT (Comme WhatsApp / Intercom) */
-    .chat-bubble-btn {
-      position: fixed;
-      bottom: 22px;
-      right: 22px;
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #0d9488 0%, #1e3a8a 100%);
-      color: #fff;
-      border: none;
-      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 26px;
-      z-index: 999;
-      transition: transform 0.2s ease;
-    }
-    .chat-bubble-btn:hover {
-      transform: scale(1.08);
-    }
-    .chat-badge {
-      position: absolute;
-      top: -2px;
-      right: -2px;
-      background: #ef4444;
-      color: #fff;
-      font-size: 10px;
-      font-weight: 800;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 2px solid #fff;
-    }
-
-    /* Fenêtre de chat flottante */
-    .chat-window {
-      display: none;
-      position: fixed;
-      bottom: 95px;
-      right: 20px;
-      width: calc(100vw - 40px);
-      max-width: 380px;
-      height: 480px;
-      background: #fff;
-      border-radius: 18px;
-      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.2);
-      border: 1px solid var(--border);
-      flex-direction: column;
-      overflow: hidden;
-      z-index: 1000;
-    }
-    .chat-header {
-      background: linear-gradient(135deg, #1e3a8a 0%, #0d9488 100%);
-      color: #fff;
-      padding: 14px 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .chat-header-title {
-      font-size: 14px;
-      font-weight: 800;
-    }
-    .chat-header-sub {
-      font-size: 11px;
-      opacity: 0.9;
-    }
-    .btn-close-chat {
-      background: transparent;
-      border: none;
-      color: #fff;
-      font-size: 20px;
-      cursor: pointer;
-      padding: 0 4px;
-    }
-    .chat-messages {
-      flex: 1;
-      padding: 14px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      background: #f8fafc;
-    }
-    .msg-bubble {
-      max-width: 85%;
-      padding: 9px 13px;
-      border-radius: 12px;
-      font-size: 13px;
-      line-height: 1.4;
-      white-space: pre-wrap;
-    }
-    .msg-bot {
-      background: #fff;
-      color: var(--text);
-      border: 1px solid #e2e8f0;
-      align-self: flex-start;
-      border-bottom-left-radius: 3px;
-    }
-    .msg-user {
-      background: var(--primary);
-      color: #fff;
-      align-self: flex-end;
-      border-bottom-right-radius: 3px;
-    }
-    .chat-input-bar {
-      display: flex;
-      padding: 10px;
-      background: #fff;
-      border-top: 1px solid var(--border);
-      gap: 8px;
-    }
-    .chat-input-bar input {
-      flex: 1;
-      padding: 9px 12px;
-      border-radius: 20px;
-      font-size: 13.5px;
-    }
-    .btn-send {
-      background: var(--secondary);
-      color: #fff;
-      border: none;
-      border-radius: 50%;
-      width: 38px;
-      height: 38px;
-      cursor: pointer;
-      font-size: 15px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    /* Écran succès */
     .success {
       display: none;
       text-align: center;
@@ -348,26 +183,44 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 32px;
-      margin-bottom: 16px;
+      font-size: 34px;
+      margin-bottom: 12px;
     }
+
     .booking-box {
-      background: #f0fdf4;
-      border: 2px solid #bbf7d0;
-      border-radius: 14px;
+      background: #f8fafc;
+      border: 2px dashed #0d9488;
+      border-radius: 12px;
       padding: 16px;
-      margin: 18px 0;
+      margin: 16px 0;
       text-align: left;
     }
-    .b-row {
+    .booking-box .b-row {
       margin-bottom: 8px;
       font-size: 14px;
     }
-    .b-row:last-child { margin-bottom: 0; }
+    .booking-box .b-row:last-child { margin-bottom: 0; }
+
+    .cancel-link {
+      display: block;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: underline;
+      margin-top: 15px;
+      cursor: pointer;
+    }
+
+    .cancel-section {
+      display: none;
+      margin-top: 15px;
+      border-top: 1px solid var(--border);
+      padding-top: 15px;
+    }
 
     .footer {
       text-align: center;
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-muted);
       margin-top: 20px;
     }
@@ -376,87 +229,119 @@
 <body>
   <div class="container">
     <div class="header">
-      <div class="badge">🚐 TOILETTAGE ITINÉRANT PROFESSIONNEL</div>
+      <div class="badge">🚐 Camion de toilettage sur emplacements fixes</div>
       <h1 class="title">La Canin Mobile</h1>
       <p class="subtitle">Sandrine Hiriart • Urrugne & Saint-Pée-sur-Nivelle</p>
     </div>
 
-    <!-- FORMULAIRE ÉPURÉ ET SIMPLE -->
-    <div class="card" id="booking-card">
+    <div class="notice">
+      🚐 <strong>Mission solidaire du 1er au 23 novembre inclus.</strong><br>
+      Réservation ferme et immédiate pour le retour de Sandrine à partir du <strong>Mardi 24 Novembre</strong>.
+    </div>
+
+    <!-- Carte de Réservation -->
+    <div id="booking-card" class="card">
       <form id="booking-form">
-        <div class="step-title">📍 1. Votre secteur</div>
+        <!-- 1. Secteur & Emplacement Fixe -->
+        <div class="step-title">📍 1. Emplacement fixe souhaité</div>
         <div class="field">
           <div class="radio-grid">
             <label class="radio-card">
-              <input type="radio" name="secteur" value="Urrugne" checked onchange="chargerCreneaux()">
+              <input type="radio" name="secteur" value="Urrugne" checked>
               <span class="r-title">Urrugne</span>
-              <span class="r-spot">Maison des Assos</span>
-              <span style="font-size:10px; color:#64748b;">Mar, Mer, Sam</span>
+              <span class="r-spot">Maison des Associations</span>
+              <span class="r-desc">Mar • Mer • Sam</span>
             </label>
             <label class="radio-card">
-              <input type="radio" name="secteur" value="Saint-Pée-sur-Nivelle" onchange="chargerCreneaux()">
+              <input type="radio" name="secteur" value="Saint-Pée-sur-Nivelle">
               <span class="r-title">St-Pée</span>
               <span class="r-spot">Garage Renault</span>
-              <span style="font-size:10px; color:#64748b;">Jeu, Ven</span>
+              <span class="r-desc">Jeu • Ven</span>
             </label>
           </div>
         </div>
 
-        <div class="step-title">🐾 2. Votre animal</div>
+        <!-- 2. Coordonnées -->
+        <div class="step-title" style="margin-top: 20px;">👤 2. Vos coordonnées</div>
         <div class="field">
-          <label>Prénom de l'animal</label>
-          <input type="text" name="nom_animal" id="nom_animal" placeholder="Ex: Max, Maya..." required onblur="chargerCreneaux()">
+          <label for="nom_maitre">Nom & Prénom du propriétaire *</label>
+          <input type="text" id="nom_maitre" name="nom_maitre" placeholder="Votre nom et prénom" required>
         </div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-          <div class="field">
-            <label>Espèce</label>
-            <select name="espece" id="espece" onchange="chargerCreneaux()">
-              <option value="Chien">Chien</option>
-              <option value="Chat">Chat</option>
+        <div class="field">
+          <label for="telephone">Numéro de téléphone mobile *</label>
+          <input type="tel" id="telephone" name="telephone" placeholder="Ex: 06 12 34 56 78" required>
+        </div>
+
+        <!-- 3. Animal -->
+        <div class="step-title" style="margin-top: 20px;">🐾 3. Votre animal</div>
+        <div class="field" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label for="nom_animal">Nom *</label>
+            <input type="text" id="nom_animal" name="nom_animal" placeholder="Ex: Filou, Maya, Max..." required>
+          </div>
+          <div>
+            <label for="espece">Espèce *</label>
+            <select id="espece" name="espece">
+              <option value="Chien">Chien 🐶</option>
+              <option value="Chat">Chat 🐱</option>
             </select>
           </div>
-          <div class="field">
-            <label>Race</label>
-            <input type="text" name="race" id="race" placeholder="Ex: Caniche..." onblur="chargerCreneaux()">
-          </div>
-        </div>
-
-        <div class="step-title" style="margin-top:10px;">🕒 3. Prochains créneaux disponibles</div>
-        <div id="slots-container">
-          <div style="text-align:center; padding:15px; color:#64748b; font-size:13px;">
-            Recherche des disponibilités en cours...
-          </div>
-        </div>
-        <input type="hidden" name="date_choisie" id="date_choisie">
-        <input type="hidden" name="heure_choisie" id="heure_choisie">
-
-        <div class="step-title" style="margin-top:15px;">👤 4. Vos coordonnées</div>
-        <div class="field">
-          <label>Votre nom et prénom</label>
-          <input type="text" name="nom_maitre" placeholder="Ex: Marie Dupont" required>
         </div>
         <div class="field">
-          <label>Numéro de téléphone</label>
-          <input type="tel" name="telephone" placeholder="06 12 34 56 78" required>
+          <label for="race">Race (facultatif)</label>
+          <input type="text" id="race" name="race" placeholder="Ex: Caniche, Bichon, Berger...">
         </div>
 
-        <button type="submit" class="btn-submit" id="btn-submit" disabled>
-          Sélectionnez un horaire ci-dessus
+        <!-- Note de courtoisie -->
+        <div class="courtesy-box">
+          <strong>🤝 Courtoisie & Respect du planning :</strong><br>
+          Sandrine vous accueille dans son camion sur ses emplacements fixes d'Urrugne et Saint-Pée. Un désistement imprévu chamboule toute une journée de travail et bloque d'autres animaux en attente.<br>
+          En cas d'empêchement, nous vous remercions d'avoir la courtoisie d'annuler au moins <strong>24 heures à l'avance</strong> afin de lui permettre de réorganiser sa journée.
+        </div>
+
+        <button type="submit" id="btn-submit" class="btn-submit">
+          🐾 Obtenir mon rendez-vous ferme
         </button>
       </form>
+
+      <!-- Lien d'annulation -->
+      <a class="cancel-link" onclick="toggleCancelSection()">Annuler ou modifier un rendez-vous existant</a>
+
+      <!-- Volet d'annulation -->
+      <div id="cancel-section" class="cancel-section">
+        <div class="step-title" style="color: #b91c1c;">❌ Annulation de rendez-vous</div>
+        <div class="field">
+          <label for="cancel_tel">Votre numéro de téléphone de réservation *</label>
+          <input type="tel" id="cancel_tel" placeholder="Ex: 06 12 34 56 78">
+        </div>
+        <div class="field">
+          <label for="cancel_animal">Nom de l'animal</label>
+          <input type="text" id="cancel_animal" placeholder="Ex: Filou, Maya...">
+        </div>
+        <button type="button" onclick="soumettreAnnulation()" id="btn-cancel" class="btn-submit" style="background: #dc2626; margin-top: 10px;">
+          Confirmer l'annulation du rendez-vous
+        </button>
+        <p id="cancel-feedback" style="font-size: 13px; margin-top: 10px; font-weight: 700; text-align: center;"></p>
+      </div>
     </div>
 
-    <!-- ÉCRAN DE CONFIRMATION SUCCÈS -->
-    <div class="card success" id="success-screen">
+    <!-- Écran de Confirmation Ferme -->
+    <div id="success-screen" class="card success">
       <div class="success-icon">✓</div>
-      <h2 style="font-size: 22px; font-weight: 800; color: #166534; margin-bottom: 6px;">Rendez-vous confirmé !</h2>
-      <p style="font-size: 14px; color: var(--text-muted);">Votre séance est d'ores et déjà validée et inscrite dans l'agenda de Sandrine.</p>
+      <h2 style="color: #166534; font-size: 22px; font-weight: 800; margin-bottom: 6px;">Rendez-vous FERMEMENT CONFIRMÉ !</h2>
+      <p style="font-size: 13px; color: var(--text-muted);">Votre créneau est d'ores et déjà inscrit et validé dans l'agenda de Sandrine.</p>
 
-      <div class="booking-box" id="booking-details"></div>
+      <div class="booking-box" id="booking-details">
+        <!-- Rempli en JS -->
+      </div>
 
       <p style="font-size: 13px; color: #166534; font-weight: 700; line-height: 1.4;">
-        🚐 Sandrine vous attendra à son camion le jour convenu !
+        🚐 Aucun appel supplémentaire n'est nécessaire. Sandrine vous attendra à son camion le jour convenu !
       </p>
+
+      <div class="courtesy-box" style="text-align: left; margin-top: 15px;">
+        <strong>🤝 Rappel courtoisie :</strong> En cas d'empêchement imprévu, merci de prévenir au moins 24h à l'avance pour permettre la réorganisation de la journée de Sandrine.
+      </div>
 
       <button onclick="location.reload()" class="btn-submit" style="margin-top: 20px; background: var(--primary);">
         Prendre un autre rendez-vous
@@ -464,121 +349,21 @@
     </div>
 
     <div class="footer">
-      <p>La Canin Mobile • Sandrine Hiriart • Artisane toiletteuse diplômée</p>
-    </div>
-  </div>
-
-  <!-- BULLE FLOTTANTE DE CHAT -->
-  <button class="chat-bubble-btn" onclick="toggleChatWindow()" title="Discuter avec l'assistant de Sandrine">
-    💬
-    <div class="chat-badge">1</div>
-  </button>
-
-  <!-- FENÊTRE DE CHAT FLOTTANTE -->
-  <div class="chat-window" id="chat-window">
-    <div class="chat-header">
-      <div>
-        <div class="chat-header-title">🐾 Assistant de Sandrine</div>
-        <div class="chat-header-sub">En ligne • Répond à vos disponibilités</div>
-      </div>
-      <button class="btn-close-chat" onclick="toggleChatWindow()">✕</button>
-    </div>
-
-    <div class="chat-messages" id="chat-messages">
-      <div class="msg-bubble msg-bot">Bonjour ! Je suis l'assistant de Sandrine 🚐✨
-Pour quelle période ou quel horaire souhaitez-vous un rendez-vous (matin, après-midi, dans 2 mois...) ? Je regarde l'agenda pour vous !</div>
-    </div>
-
-    <div class="chat-input-bar">
-      <input type="text" id="chat-input" placeholder="Écrivez votre message..." onkeydown="if(event.key==='Enter') envoyerChat()">
-      <button class="btn-send" onclick="envoyerChat()">➔</button>
+      <p>La Canin Mobile • Sandrine Hiriart • Artisane toiletteuse</p>
     </div>
   </div>
 
   <script>
-    let chatHistory = [];
-
-    function toggleChatWindow() {
-      const win = document.getElementById('chat-window');
-      win.style.display = (win.style.display === 'flex') ? 'none' : 'flex';
-      if (win.style.display === 'flex') {
-        document.getElementById('chat-input').focus();
-      }
-    }
-
-    async function chargerCreneaux() {
-      const form = document.getElementById('booking-form');
-      const secteur = form.querySelector('input[name="secteur"]:checked').value;
-      const nom_animal = document.getElementById('nom_animal').value || 'Animal';
-      const espece = document.getElementById('espece').value || 'Chien';
-      const race = document.getElementById('race').value || 'Non précisée';
-
-      const container = document.getElementById('slots-container');
-      container.innerHTML = '<div style="text-align:center; padding:15px; color:#64748b; font-size:13px;">Recherche des disponibilités en cours...</div>';
-
-      try {
-        const res = await fetch('/api/creneaux_disponibles', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ secteur, nom_animal, espece, race })
-        });
-        const data = await res.json();
-
-        if (data.status === 'success' && data.jours && data.jours.length > 0) {
-          // On sélectionne seulement 3 ou 4 créneaux aérés (matin / après-midi) pour ne pas surcharger
-          let options = [];
-          for (const j of data.jours) {
-            // Prendre 1 matin et 1 après-midi par jour disponible
-            const matin = j.creneaux.find(h => parseInt(h.split(':')[0]) < 13);
-            const aprem = j.creneaux.find(h => parseInt(h.split(':')[0]) >= 14);
-            if (matin) options.push({ date: j.date, date_fr: j.date_fr, heure: matin });
-            if (aprem) options.push({ date: j.date, date_fr: j.date_fr, heure: aprem });
-            if (options.length >= 4) break;
-          }
-
-          let html = `
-            <div class="slots-summary-box">
-              <div class="slots-title">✨ Choisissez l'horaire qui vous convient le mieux :</div>
-              <div class="slot-row">`;
-          
-          options.forEach(opt => {
-            html += `
-              <div class="slot-pill" onclick="selectionnerCreneau('${opt.date}', '${opt.heure}', this)">
-                <span>${opt.heure}</span>
-                <span class="sp-date">${opt.date_fr.split(' ')[0]} ${opt.date_fr.split(' ')[1]}</span>
-              </div>`;
-          });
-
-          html += `</div>
-            <div style="text-align:center; margin-top:10px; font-size:11.5px; color:#0f766e;">
-              💡 <em>Besoin d'un autre jour ou dans 2 mois ? Cliquez sur la bulle 💬 en bas à droite !</em>
-            </div>
-          </div>`;
-          container.innerHTML = html;
-        } else {
-          container.innerHTML = '<div style="text-align:center; padding:15px; color:#dc2626; font-size:13px;">Complet sur cette période. Écrivez à l\'assistant via la bulle 💬 pour d\'autres dates !</div>';
-        }
-      } catch (err) {
-        container.innerHTML = '<div style="text-align:center; padding:15px; color:#dc2626; font-size:13px;">Erreur de connexion. Veuillez actualiser la page.</div>';
-      }
-    }
-
-    function selectionnerCreneau(date, heure, el) {
-      document.querySelectorAll('.slot-pill').forEach(p => p.classList.remove('selected'));
-      el.classList.add('selected');
-      document.getElementById('date_choisie').value = date;
-      document.getElementById('heure_choisie').value = heure;
-
-      const btn = document.getElementById('btn-submit');
-      btn.disabled = false;
-      btn.innerText = `🐾 Confirmer pour le ${date} à ${heure}`;
+    function toggleCancelSection() {
+      const sec = document.getElementById('cancel-section');
+      sec.style.display = (sec.style.display === 'block') ? 'none' : 'block';
     }
 
     document.getElementById('booking-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const btn = document.getElementById('btn-submit');
       btn.disabled = true;
-      btn.innerText = 'Validation en direct...';
+      btn.innerText = 'Attribution et validation du créneau ferme...';
 
       const formData = new FormData(this);
       const payload = {
@@ -587,9 +372,7 @@ Pour quelle période ou quel horaire souhaitez-vous un rendez-vous (matin, aprè
         nom_animal: formData.get('nom_animal'),
         espece: formData.get('espece'),
         race: formData.get('race') || 'Non précisée',
-        secteur: formData.get('secteur'),
-        date_choisie: formData.get('date_choisie'),
-        heure_choisie: formData.get('heure_choisie')
+        secteur: formData.get('secteur')
       };
 
       try {
@@ -602,6 +385,7 @@ Pour quelle période ou quel horaire souhaitez-vous un rendez-vous (matin, aprè
 
         if (data.status === 'success') {
           document.getElementById('booking-card').style.display = 'none';
+          document.querySelector('.notice').style.display = 'none';
           document.getElementById('booking-details').innerHTML = `
             <div class="b-row">📅 <strong>Date :</strong> ${data.date_confirmee}</div>
             <div class="b-row">⏰ <strong>Heure :</strong> ${data.heure_confirmee}</div>
@@ -613,54 +397,54 @@ Pour quelle période ou quel horaire souhaitez-vous un rendez-vous (matin, aprè
         } else {
           alert("Erreur lors de la réservation : " + (data.message || "Merci de réessayer."));
           btn.disabled = false;
+          btn.innerText = '🐾 Obtenir mon rendez-vous ferme';
         }
       } catch (err) {
-        alert("Erreur réseau. Veuillez réessayer.");
+        alert("Une erreur de connexion est survenue. Veuillez réessayer.");
         btn.disabled = false;
+        btn.innerText = '🐾 Obtenir mon rendez-vous ferme';
       }
     });
 
-    async function envoyerChat() {
-      const input = document.getElementById('chat-input');
-      const text = input.value.trim();
-      if (!text) return;
+    async function soumettreAnnulation() {
+      const tel = document.getElementById('cancel_tel').value.trim();
+      const animal = document.getElementById('cancel_animal').value.trim();
+      const feedback = document.getElementById('cancel-feedback');
 
-      const chatContainer = document.getElementById('chat-messages');
-      chatContainer.innerHTML += `<div class="msg-bubble msg-user">${text}</div>`;
-      input.value = '';
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+      if (!tel) {
+        alert("Veuillez saisir votre numéro de téléphone.");
+        return;
+      }
 
-      chatHistory.push({ role: 'user', text: text });
-
-      const typingId = 'typing-' + Date.now();
-      chatContainer.innerHTML += `<div class="msg-bubble msg-bot" id="${typingId}"><em>En train d'écrire...</em></div>`;
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+      const btn = document.getElementById('btn-cancel');
+      btn.disabled = true;
+      btn.innerText = "Recherche et annulation...";
 
       try {
-        const res = await fetch('/api/chat', {
+        const res = await fetch('/api/annuler', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, history: chatHistory })
+          body: JSON.stringify({ telephone: tel, nom_animal: animal })
         });
         const data = await res.json();
-        const typingEl = document.getElementById(typingId);
-        if (typingEl) typingEl.remove();
 
-        if (data.status === 'success' && data.reply) {
-          chatContainer.innerHTML += `<div class="msg-bubble msg-bot">${data.reply}</div>`;
-          chatHistory.push({ role: 'bot', text: data.reply });
+        if (data.status === 'success') {
+          feedback.style.color = '#16a34a';
+          feedback.innerText = "✓ " + data.message;
+          btn.innerText = "Rendez-vous annulé";
         } else {
-          chatContainer.innerHTML += `<div class="msg-bubble msg-bot">Pouvez-vous reformuler votre demande ?</div>`;
+          feedback.style.color = '#dc2626';
+          feedback.innerText = data.message || "Aucun rendez-vous trouvé.";
+          btn.disabled = false;
+          btn.innerText = "Confirmer l'annulation du rendez-vous";
         }
       } catch (err) {
-        const typingEl = document.getElementById(typingId);
-        if (typingEl) typingEl.remove();
-        chatContainer.innerHTML += `<div class="msg-bubble msg-bot">Problème de connexion, veuillez réessayer.</div>`;
+        feedback.style.color = '#dc2626';
+        feedback.innerText = "Erreur de connexion. Veuillez réessayer.";
+        btn.disabled = false;
+        btn.innerText = "Confirmer l'annulation du rendez-vous";
       }
-      chatContainer.scrollTop = chatContainer.scrollHeight;
     }
-
-    window.addEventListener('DOMContentLoaded', chargerCreneaux);
   </script>
 </body>
 </html>
