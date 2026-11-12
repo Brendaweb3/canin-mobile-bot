@@ -681,6 +681,99 @@ def process_message(msg):
             save_states()
             send_telegram_message(chat_id, msg_conf)
 
+
+def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat: str = 'B', max_jours: int = 14) -> list:
+    """Calcule tous les créneaux réels disponibles par jour pour l'affichage calendrier."""
+    appts = load_all_appointments()
+    paris_tz = timezone(timedelta(hours=1))
+    live_events = obtenir_evenements_google_calendar_direct()
+    for lev in live_events:
+        st_iso = lev.get("start", "")
+        end_iso = lev.get("end", "")
+        if st_iso:
+            try:
+                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(paris_tz)
+                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(paris_tz)
+                dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
+                appts.append({
+                    "date": dt_s.strftime("%Y-%m-%d"),
+                    "time": dt_s.strftime("%H:%M:00"),
+                    "duration": dur_calc,
+                    "title": lev.get("title", ""),
+                    "description": f"Événement réel Google Agenda : {lev.get('title', '')}"
+                })
+            except Exception:
+                pass
+
+    valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
+    cur_date = datetime(2026, 11, 24)
+    end_date = datetime(2027, 2, 28)
+
+    resultats = []
+    jours_courts = ["Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Dim."]
+    mois_courts = ["", "Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
+
+    while cur_date <= end_date and len(resultats) < max_jours:
+        if cur_date.weekday() in valid_weekdays:
+            date_str = cur_date.strftime("%Y-%m-%d")
+            day_appts = [a for a in appts if a.get("date") == date_str]
+
+            # Quotas journaliers
+            cat_d_count = sum(1 for a in day_appts if "cat. d" in a.get("description", "").lower() or a.get("duration", 0) >= 120)
+            cat_c_count = sum(1 for a in day_appts if "cat. c" in a.get("description", "").lower() or a.get("duration", 0) == 90)
+
+            if not (cat == "D" and cat_d_count >= 1) and not (cat == "C" and cat_c_count >= 2):
+                cat_c_matin = sum(1 for a in day_appts if ("cat. c" in a.get("description", "").lower() or a.get("duration", 0) == 90) and int(a.get("time", "09:00:00")[:2]) < 13)
+                cat_c_aprem = sum(1 for a in day_appts if ("cat. c" in a.get("description", "").lower() or a.get("duration", 0) == 90) and int(a.get("time", "09:00:00")[:2]) >= 13)
+
+                occupied = []
+                for a in day_appts:
+                    try:
+                        h, m = map(int, a.get("time", "09:00:00")[:5].split(":"))
+                        dur = a.get("duration", 60)
+                        occupied.append((h * 60 + m, h * 60 + m + dur))
+                    except Exception:
+                        pass
+                occupied.sort()
+
+                creneaux_jour = []
+                for s in [540, 570, 600, 630, 660, 690, 720, 750, 840, 870, 900, 930, 960, 990, 1020, 1050]:
+                    e = s + duree_minutes
+                    is_matin = (s >= 540 and e <= 780)
+                    is_aprem = (s >= 840 and e <= 1080)
+                    if not (is_matin or is_aprem):
+                        continue
+                    if cat == "C":
+                        if is_matin and cat_c_matin >= 1:
+                            continue
+                        if is_aprem and cat_c_aprem >= 1:
+                            continue
+
+                    overlap = any(not (e <= occ_s or s >= occ_e) for occ_s, occ_e in occupied)
+                    if not overlap:
+                        h_val = s // 60
+                        m_val = s % 60
+                        periode = "Matin" if is_matin else "Après-midi"
+                        creneaux_jour.append({
+                            "heure": f"{h_val:02d}:{m_val:02d}",
+                            "periode": periode
+                        })
+
+                if creneaux_jour:
+                    j_court = jours_courts[cur_date.weekday()]
+                    m_court = mois_courts[cur_date.month]
+                    badge_date = f"{j_court} {cur_date.day} {m_court}"
+                    resultats.append({
+                        "date": date_str,
+                        "badge_date": badge_date,
+                        "date_fr": date_vers_texte_fr(cur_date),
+                        "creneaux": creneaux_jour
+                    })
+
+        cur_date += timedelta(days=1)
+    return resultats
+
+
 class WebhookHTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/logs":
@@ -715,6 +808,30 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
 
+            # Route API : Liste des créneaux pour le calendrier de réservation
+            if self.path == "/api/creneaux_disponibles":
+                try:
+                    payload = json.loads(post_data.decode("utf-8"))
+                    sec = payload.get("secteur", "Urrugne")
+                    nom_a = payload.get("nom_animal", "Animal")
+                    esp = payload.get("espece", "Chien")
+                    race = payload.get("race", "Non précisée")
+
+                    cat, dur, _ = qualifier_categorie_animal(nom_a, esp, race)
+                    dispos = obtenir_tous_les_creneaux_disponibles(sec, dur, cat, max_jours=10)
+
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "success", "categorie": cat, "duree": dur, "jours": dispos}, ensure_ascii=False).encode("utf-8"))
+                    return
+                except Exception as e_cr:
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "error", "message": str(e_cr)}).encode("utf-8"))
+                    return
+
             # 1. Route API de réservation web directe (Attribution ferme et directe dans l'agenda)
             if self.path == "/api/reserver":
                 try:
@@ -731,13 +848,23 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     # 1. Qualification automatique de la catégorie
                     cat, dur, cat_source = qualifier_categorie_animal(nom_a, esp, race, tel)
 
-                    # 2. Recherche du premier créneau ferme disponible
-                    date_str, heure_str, dt_obj = trouver_premier_creneau_disponible(sec, dur, cat)
+                    # 2. Choix du client ou premier créneau disponible
+                    date_choisie = payload.get("date_choisie", "").strip()
+                    heure_choisie = payload.get("heure_choisie", "").strip()
 
-                    if not date_str:
-                        date_str = "2026-11-24" if "urrugne" in sec.lower() else "2026-11-26"
-                        heure_str = "09:00"
-                        dt_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                    if date_choisie and heure_choisie:
+                        date_str = date_choisie
+                        heure_str = heure_choisie
+                        try:
+                            dt_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                        except Exception:
+                            dt_obj = datetime.now()
+                    else:
+                        date_str, heure_str, dt_obj = trouver_premier_creneau_disponible(sec, dur, cat)
+                        if not date_str:
+                            date_str = "2026-11-24" if "urrugne" in sec.lower() else "2026-11-26"
+                            heure_str = "09:00"
+                            dt_obj = datetime.strptime(date_str, "%Y-%m-%d")
 
                     date_fr_label = date_vers_texte_fr(dt_obj)
                     lieu_exact = "Maison des Associations (Kixoenea)" if "urrugne" in sec.lower() else "À côté du Garage Renault"
