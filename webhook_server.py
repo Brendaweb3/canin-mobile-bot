@@ -501,9 +501,20 @@ def inscrire_dans_google_calendar(p: dict) -> bool:
         h_formatted = start_dt.strftime("%Hh%M")
         end_h_formatted = end_dt.strftime("%Hh%M")
         nom = p.get('nom_animal', 'Toilettage')
+        maitre = p.get('nom_maitre', '').strip()
+        race = p.get('race', '').strip()
         is_auto = p.get('is_auto', False) or p.get('recurrent', False)
         prefix_auto = "⏰ [AUTO] " if is_auto else ""
-        title = f"{h_formatted} à {end_h_formatted}\n{prefix_auto}{nom}"
+
+        # Formatage complet : Animal (Maître - Race)
+        details_list = []
+        if maitre and maitre not in ['Inconnu', 'Non précisé', 'Client']:
+            details_list.append(maitre)
+        if race and race not in ['race', 'Inconnue', 'Non précisée', 'Chien', 'Chat']:
+            details_list.append(race)
+        
+        details_str = f" ({' - '.join(details_list)})" if details_list else ""
+        title = f"{h_formatted} à {end_h_formatted}\n{prefix_auto}{nom}{details_str}"
         
         start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
         end_iso = end_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
