@@ -497,6 +497,7 @@ def inscrire_dans_google_calendar(p: dict) -> bool:
         start_dt = datetime.strptime(f"{date_str} {heure_str}", "%Y-%m-%d %H:%M")
         end_dt = start_dt + timedelta(minutes=duree)
         
+        h_formatted = start_dt.strftime("%Hh%M")
         end_h_formatted = end_dt.strftime("%Hh%M")
         nom = p.get('nom_animal', 'Toilettage')
         title = f"{h_formatted} à {end_h_formatted}\n{nom}"
