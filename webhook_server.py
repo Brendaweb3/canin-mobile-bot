@@ -1,3 +1,4 @@
+import time
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -1076,9 +1077,40 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             log(f"Webhook POST Error: {e}")
 
+
+def watchdog_surveillance_boucle():
+    """Robot Sentinelle intégré : surveille l'agenda Google toutes les 5 minutes et alerte si anomalie."""
+    time.sleep(30) # Laisse le temps au serveur de démarrer
+    while True:
+        try:
+            live = obtenir_evenements_google_calendar_direct()
+            slots = {}
+            for ev in live:
+                st = ev.get("start", "")
+                if st:
+                    slots[st] = slots.get(st, []) + [ev.get("title", "Sans titre")]
+
+            # Vérifier les doublons
+            doublons = {k: v for k, v in slots.items() if len(v) > 1}
+            if doublons:
+                msg_d = "🚨 *SENTINELLE LA CANIN MOBILE - ALERTE CONFLIT DÉTECTÉ DANS L'AGENDA !*\n\n"
+                for k, v in doublons.items():
+                    msg_d += f"📅 Heure : {k}\n🐾 Événements : {', '.join(v)}\n\n"
+                msg_d += "👉 Intervention requise."
+                for cid in ["6022976635", "8771111289"]:
+                    send_telegram_message(cid, msg_d)
+        except Exception as e_wd:
+            log(f"[WATCHDOG ERROR] : {e_wd}")
+
+        time.sleep(300) # Re-contrôle toutes les 5 minutes
+
 def run_server():
     server_address = ("", PORT)
     httpd = HTTPServer(server_address, WebhookHTTPHandler)
+    # Lancement du Robot Sentinelle en tâche de fond permanente
+    t_wd = threading.Thread(target=watchdog_surveillance_boucle, daemon=True)
+    t_wd.start()
+    log("🛡️ Robot Sentinelle de surveillance démarré en tâche de fond (contrôle anti-collision toutes les 5 min).")
     log(f"🚐 SERVEUR WEBHOOK LA CANIN MOBILE (GEMINI 2.5 FLASH DIRECT LOCK) PRÊT SUR LE PORT {PORT}")
     httpd.serve_forever()
 
