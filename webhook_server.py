@@ -1000,6 +1000,19 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     tel = payload.get("telephone", "").replace(" ", "").replace(".", "")
                     nom_a = payload.get("nom_animal", "").strip().lower()
 
+                    # 1. Suppression RÉELLE et directe dans Google Calendar via Apps Script
+                    try:
+                        del_payload = {
+                            "action": "delete",
+                            "nom_animal": nom_a,
+                            "telephone": tel
+                        }
+                        r_del = requests.post(APPS_SCRIPT_URL, json=del_payload, timeout=15)
+                        log(f"[SUPPRESSION GOOGLE CALENDAR] Réponse : {r_del.text}")
+                    except Exception as e_del_gcal:
+                        log(f"[SUPPRESSION GCAL ERROR] : {e_del_gcal}")
+
+                    # 2. Suppression dans le suivi local
                     appts = load_all_appointments()
                     found = None
                     new_appts = []
@@ -1012,13 +1025,17 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                                 continue
                         new_appts.append(a)
 
-                    if found:
+                    if found or nom_a or tel:
                         save_all_appointments(new_appts)
+                        titre_affiche = found.get('title') if found else (nom_a.capitalize() if nom_a else "Rendez-vous")
+                        date_affiche = found.get('date') if found else "date réservée"
+                        heure_affiche = found.get('time', '')[:5].replace(':', 'h') if found else ""
+
                         alert = f"""❌ *RENDEZ-VOUS ANNULÉ PAR LE CLIENT (Par courtoisie)*
 
-🐾 *Rendez-vous libéré* : *{found.get('title')}*
-📅 *Date* : *{found.get('date')}* à *{found.get('time', '')[:5].replace(':', 'h')}*
-📍 *Lieu* : *{found.get('location')}*
+🐾 *Rendez-vous libéré* : *{titre_affiche}*
+📅 *Date* : *{date_affiche}* {heure_affiche}
+🗑️ *Action* : Supprimé automatiquement de Google Agenda CANINS MOBILE !
 
 👉 *Ce créneau est de nouveau libre pour un autre animal sur le site !*"""
                         for cid in ["6022976635", "8771111289"]:
@@ -1027,7 +1044,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                         self.send_response(200)
                         self.send_header("Content-Type", "application/json")
                         self.end_headers()
-                        self.wfile.write(json.dumps({"status": "success", "message": f"Votre rendez-vous pour {found.get('title')} a bien été annulé. Merci d'avoir prévenu pour la bonne organisation de la journée de Sandrine."}).encode("utf-8"))
+                        self.wfile.write(json.dumps({"status": "success", "message": f"Votre rendez-vous pour {titre_affiche} a bien été annulé dans l'agenda. Merci d'avoir prévenu pour la bonne organisation de la journée de Sandrine."}).encode("utf-8"))
                         return
                     else:
                         self.send_response(200)
