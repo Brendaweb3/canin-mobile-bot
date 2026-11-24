@@ -469,6 +469,20 @@
     </div>
   </div>
 
+  <!-- BULLE DE DIALOGUE ANTI-DOUBLON ANIMAL -->
+  <div id="conflict-modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:9999; align-items:center; justify-content:center; padding:16px;">
+    <div style="background:#fff; border-radius:18px; max-width:410px; width:100%; padding:22px; box-shadow:0 20px 50px rgba(0,0,0,0.25); text-align:center;">
+      <div style="font-size:34px; margin-bottom:8px;">🐾</div>
+      <h3 id="cm-title" style="font-size:18px; font-weight:800; color:#0f172a; margin-bottom:8px;">Rendez-vous déjà existant</h3>
+      <p id="cm-msg" style="font-size:13.5px; color:#334155; line-height:1.5; margin-bottom:18px;"></p>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button type="button" id="cm-btn-replace" class="btn-submit" style="margin-top:0; background:#2563eb; padding:12px; font-size:14px;"></button>
+        <button type="button" id="cm-btn-keep" class="btn-submit" style="margin-top:0; background:#16a34a; padding:12px; font-size:14px; display:none;"></button>
+        <button type="button" onclick="fermerModalConflit()" style="background:#f1f5f9; color:#475569; border:none; border-radius:10px; padding:10px; font-weight:700; font-size:13px; cursor:pointer;">Annuler / Garder mon rendez-vous actuel</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let joursData = [];
 
@@ -577,6 +591,85 @@
       btn.innerText = `🐾 Confirmer pour le ${date} à ${heure}`;
     }
 
+    let pendingPayload = null;
+
+    function fermerModalConflit() {
+      document.getElementById('conflict-modal').style.display = 'none';
+      const btn = document.getElementById('btn-submit');
+      btn.disabled = false;
+      btn.innerText = `🐾 Confirmer pour le ${document.getElementById('date_choisie').value} à ${document.getElementById('heure_choisie').value}`;
+    }
+
+    async function envoyerReservation(payload) {
+      const btn = document.getElementById('btn-submit');
+      try {
+        const res = await fetch('/api/reserver', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          document.getElementById('conflict-modal').style.display = 'none';
+          document.getElementById('booking-card').style.display = 'none';
+          document.getElementById('booking-details').innerHTML = `
+            <div class="b-row">📅 <strong>Date :</strong> ${data.date_confirmee}</div>
+            <div class="b-row">⏰ <strong>Heure :</strong> ${data.heure_confirmee}</div>
+            <div class="b-row">📍 <strong>Lieu fixe :</strong> ${data.lieu} (${data.secteur})</div>
+            <div class="b-row">🐾 <strong>Animal :</strong> ${data.nom_animal}</div>
+            <div class="b-row">👤 <strong>Client :</strong> ${data.nom_maitre}</div>
+          `;
+          document.getElementById('success-screen').style.display = 'block';
+        } else if (data.status === 'conflict_same_day' || data.status === 'conflict_other_day') {
+          pendingPayload = {
+            ...payload,
+            existing_event_id: data.existing_event_id || '',
+            existing_date: data.existing_date || ''
+          };
+          const btnRep = document.getElementById('cm-btn-replace');
+          const btnKeep = document.getElementById('cm-btn-keep');
+
+          if (data.status === 'conflict_same_day') {
+            document.getElementById('cm-title').innerText = 'Déjà réservé aujourd’hui';
+            document.getElementById('cm-msg').innerHTML =
+              `<strong>${data.nom_animal}</strong> a déjà un rendez-vous le <strong>${data.existing_date_fr}</strong> à <strong>${data.existing_heure}</strong>.<br>Il n'est pas possible d'avoir deux rendez-vous le même jour.<br><br>Souhaitez-vous déplacer votre rendez-vous à <strong>${data.new_heure}</strong> ?`;
+            btnRep.innerText = `🔄 Déplacer à ${data.new_heure}`;
+            btnKeep.style.display = 'none';
+          } else {
+            document.getElementById('cm-title').innerText = 'Rendez-vous déjà prévu';
+            document.getElementById('cm-msg').innerHTML =
+              `<strong>${data.nom_animal}</strong> a déjà un rendez-vous le <strong>${data.existing_date_fr}</strong> à <strong>${data.existing_heure}</strong>.<br><br>Souhaitez-vous prendre un deuxième rendez-vous le <strong>${data.new_date_fr}</strong> à <strong>${data.new_heure}</strong>, ou déplacer le précédent ?`;
+            btnRep.innerText = `🔄 Déplacer l'ancien vers le ${data.new_date_fr} à ${data.new_heure}`;
+            btnKeep.innerText = `➕ Prendre un 2e rendez-vous`;
+            btnKeep.style.display = 'block';
+          }
+
+          btnRep.onclick = () => {
+            btnRep.disabled = true;
+            btnRep.innerText = 'Déplacement en cours...';
+            envoyerReservation({ ...pendingPayload, doublon_decision: 'replace' });
+          };
+          btnKeep.onclick = () => {
+            btnKeep.disabled = true;
+            btnKeep.innerText = 'Validation en cours...';
+            envoyerReservation({ ...pendingPayload, doublon_decision: 'keep_both' });
+          };
+
+          document.getElementById('conflict-modal').style.display = 'flex';
+        } else {
+          document.getElementById('conflict-modal').style.display = 'none';
+          alert("Erreur lors de la réservation : " + (data.message || "Merci de réessayer."));
+          btn.disabled = false;
+          btn.innerText = 'Confirmer';
+        }
+      } catch (err) {
+        document.getElementById('conflict-modal').style.display = 'none';
+        alert("Erreur réseau. Veuillez réessayer.");
+        btn.disabled = false;
+      }
+    }
+
     document.getElementById('booking-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const btn = document.getElementById('btn-submit');
@@ -595,32 +688,7 @@
         heure_choisie: formData.get('heure_choisie')
       };
 
-      try {
-        const res = await fetch('/api/reserver', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-
-        if (data.status === 'success') {
-          document.getElementById('booking-card').style.display = 'none';
-          document.getElementById('booking-details').innerHTML = `
-            <div class="b-row">📅 <strong>Date :</strong> ${data.date_confirmee}</div>
-            <div class="b-row">⏰ <strong>Heure :</strong> ${data.heure_confirmee}</div>
-            <div class="b-row">📍 <strong>Lieu fixe :</strong> ${data.lieu} (${data.secteur})</div>
-            <div class="b-row">🐾 <strong>Animal :</strong> ${data.nom_animal}</div>
-            <div class="b-row">👤 <strong>Client :</strong> ${data.nom_maitre}</div>
-          `;
-          document.getElementById('success-screen').style.display = 'block';
-        } else {
-          alert("Erreur lors de la réservation : " + (data.message || "Merci de réessayer."));
-          btn.disabled = false;
-        }
-      } catch (err) {
-        alert("Erreur réseau. Veuillez réessayer.");
-        btn.disabled = false;
-      }
+      await envoyerReservation(payload);
     });
 
     async function soumettreAnnulation() {

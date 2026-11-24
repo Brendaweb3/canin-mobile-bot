@@ -1042,6 +1042,112 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     date_fr_label = date_vers_texte_fr(dt_obj)
                     lieu_exact = "Maison des Associations (Kixoenea)" if "urrugne" in sec.lower() else "À côté du Garage Renault"
 
+                    # 2bis. Vérification anti-doublon par animal / téléphone dans Google Agenda
+                    doublon_decision = payload.get("doublon_decision", "").strip()
+                    if not doublon_decision:
+                        import unicodedata
+                        def _norm(s):
+                            return "".join(c for c in unicodedata.normalize("NFD", (s or "").lower()) if unicodedata.category(c) != "Mn")
+
+                        nom_norm = _norm(nom_a).strip()
+                        tel_digits = re.sub(r"\D", "", tel)
+                        paris_tz = timezone(timedelta(hours=1))
+                        today_d = datetime.now(paris_tz).date()
+                        live_evs = obtenir_evenements_google_calendar_direct()
+
+                        for lev in live_evs:
+                            st_iso = lev.get("start", "")
+                            if not st_iso:
+                                continue
+                            try:
+                                dt_ev = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(paris_tz)
+                            except Exception:
+                                continue
+                            if dt_ev.date() < today_d:
+                                continue
+
+                            ev_title_norm = _norm(lev.get("title", ""))
+                            ev_desc_digits = re.sub(r"\D", "", lev.get("description", ""))
+                            match_tel = len(tel_digits) >= 8 and tel_digits in ev_desc_digits
+                            match_nom = (
+                                len(nom_norm) >= 2
+                                and nom_norm not in ["animal", "chien", "chat", "toilettage", "non precise"]
+                                and bool(re.search(r"\b" + re.escape(nom_norm) + r"\b", ev_title_norm))
+                            )
+                            if match_tel or match_nom:
+                                ev_date_str = dt_ev.strftime("%Y-%m-%d")
+                                ev_heure_str = dt_ev.strftime("%Hh%M")
+                                ev_date_fr = date_vers_texte_fr(dt_ev)
+                                status_code_res = "conflict_same_day" if ev_date_str == date_str else "conflict_other_day"
+                                resp_conflict = {
+                                    "status": status_code_res,
+                                    "existing_event_id": lev.get("id", ""),
+                                    "existing_date": ev_date_str,
+                                    "existing_date_fr": ev_date_fr,
+                                    "existing_heure": ev_heure_str,
+                                    "new_date_fr": date_fr_label,
+                                    "new_heure": heure_str.replace(":", "h"),
+                                    "nom_animal": nom_a
+                                }
+                                self.send_response(200)
+                                self.send_header("Content-Type", "application/json; charset=utf-8")
+                                self.end_headers()
+                                self.wfile.write(json.dumps(resp_conflict, ensure_ascii=False).encode("utf-8"))
+                                return
+
+                    # 2ter. Si le client a choisi de DÉPLACER son rendez-vous existant vers le nouveau créneau
+                    if doublon_decision == "replace":
+                        start_dt_new = datetime.strptime(f"{date_str} {heure_str}", "%Y-%m-%d %H:%M")
+                        end_dt_new = start_dt_new + timedelta(minutes=dur)
+                        h_f = start_dt_new.strftime("%Hh%M")
+                        end_h_f = end_dt_new.strftime("%Hh%M")
+                        det = [x for x in [nom_m if nom_m not in ["Client", "Inconnu", "Non précisé"] else "", race if race not in ["Non précisée", "Chien", "Chat", ""] else ""] if x]
+                        det_str = f" ({' - '.join(det)})" if det else ""
+                        new_title_str = f"{h_f} à {end_h_f}\n{nom_a}{det_str}"
+
+                        move_payload = {
+                            "action": "move",
+                            "eventId": payload.get("existing_event_id", ""),
+                            "nom_animal": nom_a,
+                            "telephone": tel,
+                            "old_date": payload.get("existing_date", ""),
+                            "new_start": start_dt_new.strftime("%Y-%m-%dT%H:%M:00+01:00"),
+                            "new_end": end_dt_new.strftime("%Y-%m-%dT%H:%M:00+01:00"),
+                            "new_title": new_title_str
+                        }
+                        r_mv = requests.post(APPS_SCRIPT_URL, json=move_payload, timeout=20).json()
+                        if r_mv.get("status") == "success":
+                            alert_mv = (
+                                f"🔄 *RENDEZ-VOUS DÉPLACÉ PAR LE CLIENT*\n\n"
+                                f"🐾 *Animal* : *{nom_a}* ({esp} - {race})\n"
+                                f"📅 *Nouveau créneau* : *{date_fr_label}* à *{heure_str.replace(':', 'h')}*\n"
+                                f"📍 *Lieu fixe* : *{lieu_exact}* ({sec})\n"
+                                f"👤 *Propriétaire* : *{nom_m}*\n"
+                                f"📞 *Téléphone* : `{tel}`\n\n"
+                                f"✅ *Mis à jour automatiquement dans Google Agenda CANINS MOBILE !*"
+                            )
+                            for cid in ["6022976635", "8771111289"]:
+                                send_telegram_message(cid, alert_mv)
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/json; charset=utf-8")
+                            self.end_headers()
+                            self.wfile.write(json.dumps({
+                                "status": "success",
+                                "date_confirmee": date_fr_label,
+                                "heure_confirmee": heure_str.replace(":", "h"),
+                                "lieu": lieu_exact,
+                                "secteur": sec,
+                                "nom_animal": nom_a,
+                                "nom_maitre": nom_m
+                            }, ensure_ascii=False).encode("utf-8"))
+                            return
+                        else:
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/json; charset=utf-8")
+                            self.end_headers()
+                            self.wfile.write(json.dumps({"status": "error", "message": r_mv.get("message", "Impossible de déplacer le rendez-vous.")}, ensure_ascii=False).encode("utf-8"))
+                            return
+
                     # 3. Préparation pour Google Calendar
                     booking_payload = {
                         "nom_animal": nom_a,
