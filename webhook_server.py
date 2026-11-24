@@ -98,9 +98,29 @@ def save_states():
     except Exception as e:
         log(f"[SAVE STATES ERROR] : {e}")
 
-def send_telegram_message(chat_id: str, text: str):
+PENDING_ACTIONS = {}
+CATEGORY_OVERRIDES = {}
+
+def charger_overrides_categories(force: bool = False):
+    global CATEGORY_OVERRIDES
+    if CATEGORY_OVERRIDES and not force:
+        return CATEGORY_OVERRIDES
+    try:
+        r = requests.get(f"{APPS_SCRIPT_URL}?action=get_overrides", timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("status") == "success" and isinstance(data.get("overrides"), dict):
+                CATEGORY_OVERRIDES = data["overrides"]
+                log(f"[OVERRIDES] {len(CATEGORY_OVERRIDES)} corrections de catégories chargées.")
+    except Exception as e:
+        log(f"[OVERRIDES ERROR] : {e}")
+    return CATEGORY_OVERRIDES
+
+def send_telegram_message(chat_id: str, text: str, reply_markup: dict = None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     try:
         r = requests.post(url, json=payload, timeout=12)
         if r.status_code != 200:
@@ -269,23 +289,35 @@ def date_vers_texte_fr(dt_obj):
     m_nom = MOIS_FR[dt_obj.month]
     return f"{j_nom} {dt_obj.day} {m_nom} {dt_obj.year}"
 
+def _duree_par_cat(cat: str) -> int:
+    c = (cat or "B").upper()
+    if c == "A": return 30
+    if c == "C": return 90
+    if c == "D": return 120
+    return 60
+
 def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephone: str = "") -> tuple:
+    nom_clean = (nom_animal or "").strip().lower()
+    if nom_clean:
+        overrides = charger_overrides_categories()
+        import unicodedata
+        nom_norm = "".join(ch for ch in unicodedata.normalize("NFD", nom_clean) if unicodedata.category(ch) != "Mn")
+        if nom_norm in overrides:
+            ov = overrides[nom_norm]
+            cat = (ov.get("cat") or "B").upper()
+            return cat, _duree_par_cat(cat), "Correction manuelle mémorisée (Google Sheet)"
+
     try:
         db_path = os.path.join(os.path.dirname(__file__), "clients_db.json")
         if os.path.exists(db_path):
             with open(db_path, "r", encoding="utf-8") as f_db:
                 c_db = json.load(f_db)
             tel_clean = telephone.replace(" ", "").replace(".", "") if telephone else ""
-            nom_clean = nom_animal.strip().lower()
             for item in c_db:
                 item_nom = item.get("nom_animal", "").lower()
                 if (nom_clean and nom_clean == item_nom) or (tel_clean and len(tel_clean) >= 8 and tel_clean in str(item).replace(" ", "")):
-                    cat = item.get("categorie", "B")
-                    dur = 60
-                    if cat == "A": dur = 30
-                    elif cat == "C": dur = 90
-                    elif cat == "D": dur = 120
-                    return cat, dur, "Fiche client retrouvée en base"
+                    cat = (item.get("cat") or item.get("categorie") or "B").upper()
+                    return cat, _duree_par_cat(cat), "Fiche client retrouvée en base"
     except Exception as e:
         log(f"[QUALIF ERROR] : {e}")
 
@@ -591,21 +623,51 @@ Dernière phrase de Sandrine : "{texte}"
 
 Tu dois analyser sa demande en tenant compte de tout le contexte ci-dessus et répondre UNIQUEMENT par ce JSON strict :
 
-Si elle demande de réserver, noter, inscrire ou bloquer un créneau (ex: "réserve pour mercredi à 13h30", "ajoute Pearl", "mets Eden...") :
+1. Si elle demande de réserver, noter, inscrire ou bloquer un NOUVEAU créneau (ex: "réserve pour mercredi à 13h30", "ajoute Pearl", "mets Eden...") :
 {{
   "action": "INSCRIRE",
   "nom_animal": "nom de l'animal déduit de la phrase ou de l'historique",
   "nom_maitre": "nom du maître ou Inconnu",
   "race": "race de l'animal",
   "categorie": "A" ou "B" ou "C" ou "D",
-  "duree_minutes": 30 ou 60 ou 90,
+  "duree_minutes": 30 ou 60 ou 90 ou 120,
   "date_proposee": "YYYY-MM-DD",
   "heure_debut": "HH:MM",
   "secteur": "Urrugne" ou "Saint-Pée-sur-Nivelle",
-  "message_reponse": "Phrase courte et chaleureuse confirmant que c'est noté"
+  "message_reponse": "Phrase courte et chaleureuse confirmant l'inscription"
 }}
 
-Si elle pose une question (créneaux libres, horaires, infos client...) :
+2. Si elle demande de DÉPLACER ou REPORTER un rendez-vous déjà existant (ex: "déplace Farah du 28 novembre à 16h", "décale Alba à demain 10h") :
+{{
+  "action": "DEPLACER",
+  "nom_animal": "nom de l'animal",
+  "old_date": "YYYY-MM-DD",
+  "new_date": "YYYY-MM-DD",
+  "new_heure": "HH:MM",
+  "duree_minutes": 60,
+  "message_reponse": "Phrase courte résumant le déplacement proposé"
+}}
+
+3. Si elle demande d'ANNULER ou SUPPRIMER un rendez-vous déjà existant (ex: "annule Phara le 24 novembre", "supprime le rdv de Brioche") :
+{{
+  "action": "ANNULER",
+  "nom_animal": "nom de l'animal",
+  "date": "YYYY-MM-DD",
+  "message_reponse": "Phrase courte résumant l'annulation proposée"
+}}
+
+4. Si elle demande de CORRIGER LA CATÉGORIE d'un animal (ex: "mets Alba en catégorie D", "corrige la catégorie de Phara en C", "Taïko est un cat C") :
+{{
+  "action": "CORRIGER_CATEGORIE",
+  "nom_animal": "nom de l'animal",
+  "categorie": "A" ou "B" ou "C" ou "D",
+  "race": "race si précisée sinon vide",
+  "nom_maitre": "nom du maître si précisé sinon vide",
+  "message_reponse": "Phrase courte résumant la correction de catégorie"
+}}
+
+5. Si elle pose une question (créneaux libres, horaires, infos client...) :
+RÈGLE ABSOLUE : Dans REPONDRE, n'affirme JAMAIS avoir modifié, annulé, déplacé ou corrigé quoi que ce soit.
 {{
   "action": "REPONDRE",
   "message_reponse": "Réponse claire, précise et directe sans moraliser ni surcharger d'explications superflues"
@@ -743,6 +805,46 @@ def process_message(msg):
             USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": f"Rendez-vous inscrit pour {animal} le {date_p} à {h}"})
             save_states()
             send_telegram_message(chat_id, msg_conf)
+            return
+
+        # 3. Actions critiques avec bouton de confirmation 1-clic (DEPLACER / ANNULER / CORRIGER_CATEGORIE)
+        if action in ["DEPLACER", "ANNULER", "CORRIGER_CATEGORIE"]:
+            import uuid
+            act_id = uuid.uuid4().hex[:10]
+            PENDING_ACTIONS[act_id] = {"chat_id": chat_id, "analyse": analyse}
+
+            if action == "DEPLACER":
+                resume = (
+                    f"🔄 *CONFIRMATION DE DÉPLACEMENT*\n\n"
+                    f"🐾 *Animal* : *{analyse.get('nom_animal', '?')}*\n"
+                    f"📅 *Ancienne date* : `{analyse.get('old_date', '?')}`\n"
+                    f"➡️ *Nouveau créneau* : *{analyse.get('new_date', '?')}* à *{analyse.get('new_heure', '?')}*\n\n"
+                    f"Je fais ce changement dans Google Agenda ?"
+                )
+            elif action == "ANNULER":
+                resume = (
+                    f"🗑️ *CONFIRMATION D'ANNULATION*\n\n"
+                    f"🐾 *Animal* : *{analyse.get('nom_animal', '?')}*\n"
+                    f"📅 *Date* : `{analyse.get('date', '?')}`\n\n"
+                    f"Je supprime ce rendez-vous de Google Agenda ?"
+                )
+            else:
+                cat_new = (analyse.get("categorie") or "B").upper()
+                resume = (
+                    f"🏷️ *CONFIRMATION DE CATÉGORIE*\n\n"
+                    f"🐾 *Animal* : *{analyse.get('nom_animal', '?')}*\n"
+                    f"⏱️ *Nouvelle catégorie* : `Cat. {cat_new}` ({_duree_par_cat(cat_new)} min)\n\n"
+                    f"J'enregistre cette catégorie définitivement dans la base ?"
+                )
+
+            kb = {
+                "inline_keyboard": [[
+                    {"text": "✅ Oui, confirmer", "callback_data": f"confirm:{act_id}"},
+                    {"text": "❌ Non, annuler", "callback_data": f"cancel:{act_id}"}
+                ]]
+            }
+            send_telegram_message(chat_id, f"{salutation}{vocal_tag}{resume}", reply_markup=kb)
+            return
 
 
 def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat: str = 'B', max_jours: int = 14) -> list:
@@ -1082,13 +1184,111 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"ok": true}')
 
             update = json.loads(post_data.decode("utf-8"))
-            if "message" in update:
+            if "callback_query" in update:
+                cq = update["callback_query"]
+                threading.Thread(target=process_callback_query, args=(cq,), daemon=True).start()
+            elif "message" in update:
                 m = update["message"]
                 m_type = "voice" if "voice" in m else ("text" if "text" in m else "other")
                 log(f"Reçu message Telegram ({m_type}) de {m.get('chat', {}).get('id')}")
                 threading.Thread(target=process_message, args=(m,), daemon=True).start()
         except Exception as e:
             log(f"Webhook POST Error: {e}")
+
+def process_callback_query(cq: dict):
+    """Exécute réellement l'action confirmée par Sandrine via le bouton inline Telegram."""
+    cq_id = cq.get("id")
+    data_str = cq.get("data", "")
+    msg_obj = cq.get("message", {})
+    chat_id = str(msg_obj.get("chat", {}).get("id", ""))
+    message_id = msg_obj.get("message_id")
+
+    try:
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq_id}, timeout=8)
+    except Exception:
+        pass
+
+    if ":" not in data_str:
+        return
+    decision, act_id = data_str.split(":", 1)
+    pending = PENDING_ACTIONS.pop(act_id, None)
+
+    def _edit_or_send(txt):
+        if chat_id and message_id:
+            try:
+                r = requests.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+                    json={"chat_id": chat_id, "message_id": message_id, "text": txt, "parse_mode": "Markdown"},
+                    timeout=10
+                )
+                if r.status_code == 200:
+                    return
+            except Exception:
+                pass
+        if chat_id:
+            send_telegram_message(chat_id, txt)
+
+    if not pending:
+        _edit_or_send("⏳ Cette demande a expiré (ou le serveur a redémarré). Redemande-moi simplement si besoin.")
+        return
+
+    if decision == "cancel":
+        _edit_or_send("🚫 Action annulée, rien n'a été modifié.")
+        return
+
+    analyse = pending.get("analyse", {})
+    act = analyse.get("action")
+
+    try:
+        if act == "ANNULER":
+            payload = {
+                "action": "delete",
+                "nom_animal": analyse.get("nom_animal", ""),
+                "date": analyse.get("date", "")
+            }
+            resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=20).json()
+            if resp.get("status") == "success":
+                _edit_or_send(f"✅ *Annulation effectuée dans Google Agenda !*\n\n🗑️ {resp.get('message', '')}")
+            else:
+                _edit_or_send(f"⚠️ *Annulation non effectuée :* {resp.get('message', 'Rendez-vous introuvable')}")
+
+        elif act == "DEPLACER":
+            new_date = analyse.get("new_date", "")
+            new_heure = analyse.get("new_heure", "09:00")
+            dur = int(analyse.get("duree_minutes") or 60)
+            start_dt = datetime.strptime(f"{new_date} {new_heure}", "%Y-%m-%d %H:%M")
+            end_dt = start_dt + timedelta(minutes=dur)
+            payload = {
+                "action": "move",
+                "nom_animal": analyse.get("nom_animal", ""),
+                "old_date": analyse.get("old_date", ""),
+                "new_start": start_dt.strftime("%Y-%m-%dT%H:%M:00+01:00"),
+                "new_end": end_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
+            }
+            resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=20).json()
+            if resp.get("status") == "success":
+                _edit_or_send(f"✅ *Rendez-vous déplacé dans Google Agenda !*\n\n🐾 *{analyse.get('nom_animal')}* ➔ *{new_date}* à *{new_heure}*")
+            else:
+                _edit_or_send(f"❌ *Déplacement impossible :* {resp.get('message', 'Erreur inconnue')}")
+
+        elif act == "CORRIGER_CATEGORIE":
+            payload = {
+                "action": "update_category",
+                "nom_animal": analyse.get("nom_animal", ""),
+                "categorie": (analyse.get("categorie") or "B").upper(),
+                "race": analyse.get("race", ""),
+                "nom_maitre": analyse.get("nom_maitre", "")
+            }
+            resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=20).json()
+            if resp.get("status") == "success":
+                charger_overrides_categories(force=True)
+                sheet_info = f"\n📊 [Ouvrir le tableau Google Sheet]({resp['sheet_url']})" if resp.get("sheet_url") else ""
+                _edit_or_send(f"✅ *Catégorie enregistrée définitivement !*\n\n🏷️ {resp.get('message', '')}{sheet_info}")
+            else:
+                _edit_or_send(f"❌ *Erreur lors de la sauvegarde :* {resp.get('message', 'Erreur inconnue')}")
+    except Exception as e_cb:
+        log(f"[CALLBACK ERROR] : {e_cb}")
+        _edit_or_send(f"❌ *Erreur technique :* {e_cb}")
 
 
 def watchdog_surveillance_boucle():
