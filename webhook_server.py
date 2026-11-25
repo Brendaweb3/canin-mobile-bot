@@ -458,11 +458,14 @@ def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephon
 
     # DICTIONNAIRE EXHAUSTIF DES GRANDS CHIENS & POILS LOURDS (Cat. C - 1h30 strict)
     races_c = [
-        "golden", "labrador", "berger allemand", "berger australien", "malinois", "beauceron",
+        "labrador", "berger allemand", "berger australien", "malinois", "beauceron",
         "setter", "cocker", "épagneul", "epagneul", "samoyède", "samoyede", "husky",
         "border collie", "chow", "chow-chow", "collie", "berger blanc suisse", "springer",
         "braque", "dalmatien", "boxer", "rottweiler", "berger picard", "weimaraner", "braque de weimar"
     ]
+
+    # CHIENS CLASSÉS CATÉGORIE B (1h00) PAR RÈGLE MÉTIER SANDRINE
+    races_b = ["golden", "golden retriever"]
 
     # PETITS CHIENS POIL RAS (Cat. A - 30 min)
     races_a = [
@@ -473,6 +476,9 @@ def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephon
     for r in races_d:
         if r in race_lower:
             return "D", 120, f"Chien géant / lourd {race} (Cat. D - 2h00 strict)"
+    for r in races_b:
+        if r in race_lower:
+            return "B", 60, f"Race {race} classée en Cat. B (1h00)"
     for r in races_c:
         if r in race_lower:
             return "C", 90, f"Grand chien / poil fourni {race} (Cat. C - 1h30 strict)"
