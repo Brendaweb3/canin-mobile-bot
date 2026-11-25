@@ -128,13 +128,14 @@ def send_telegram_vcf(chat_id: str, nom_maitre: str, nom_animal: str, race: str,
     """Envoie une vraie carte contact .vcf dans Telegram (1 clic -> Ajouter aux contacts)."""
     if not tel or len(re.sub(r"\D", "", tel)) < 6:
         return
-    clean_name = f"{nom_maitre} ({nom_animal} - {race})".strip()
+    clean_name = f"🐾 {nom_maitre} ({nom_animal} - {race})".strip()
     vcf_content = (
         "BEGIN:VCARD\n"
         "VERSION:3.0\n"
         f"FN:{clean_name}\n"
         f"N:;{clean_name};;;\n"
         f"TEL;TYPE=CELL:{tel}\n"
+        "CATEGORIES:CLIENTS CANIN\n"
         f"NOTE:Client La Canin Mobile - Animal: {nom_animal} ({race})\n"
         "END:VCARD\n"
     )
