@@ -298,10 +298,10 @@ function doPost(e) {
       location: data.location || ""
     });
 
-    // Pas de bleu ni de vert pour les réservations web (couleur sobre par défaut de l'agenda).
-    // Rose flamboyant ("4") conservé uniquement si pris via Telegram par Sandrine.
-    if (data.source === "telegram") {
-      event.setColor("4");
+    // RDV pris par Telegram / Sandrine : garde la couleur par défaut de l'agenda (rose soutenu).
+    // RDV pris en ligne sur le site web : Sauge / vert avocat doux ("2").
+    if (data.source !== "telegram") {
+      event.setColor("2");
     }
 
     return jsonOut({ status: "success", eventId: event.getId() });
