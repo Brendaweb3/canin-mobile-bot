@@ -102,19 +102,52 @@ PENDING_ACTIONS = {}
 CATEGORY_OVERRIDES = {}
 
 def charger_overrides_categories(force: bool = False):
-    global CATEGORY_OVERRIDES
+    global CATEGORY_OVERRIDES, CLIENTS_DB
     if CATEGORY_OVERRIDES and not force:
         return CATEGORY_OVERRIDES
     try:
         r = requests.get(f"{APPS_SCRIPT_URL}?action=get_overrides", timeout=10)
         if r.status_code == 200:
             data = r.json()
-            if data.get("status") == "success" and isinstance(data.get("overrides"), dict):
-                CATEGORY_OVERRIDES = data["overrides"]
-                log(f"[OVERRIDES] {len(CATEGORY_OVERRIDES)} corrections de catégories chargées.")
+            if data.get("status") == "success":
+                if isinstance(data.get("overrides"), dict):
+                    CATEGORY_OVERRIDES = data["overrides"]
+                custom_list = data.get("custom_clients", [])
+                if isinstance(custom_list, list) and custom_list:
+                    existing_ids = {c.get("id") for c in CLIENTS_DB}
+                    for cc in custom_list:
+                        if cc.get("id") not in existing_ids:
+                            CLIENTS_DB.append(cc)
+                            existing_ids.add(cc.get("id"))
+                log(f"[OVERRIDES] {len(CATEGORY_OVERRIDES)} catégories + {len(custom_list)} clients perso chargés.")
     except Exception as e:
         log(f"[OVERRIDES ERROR] : {e}")
     return CATEGORY_OVERRIDES
+
+def send_telegram_vcf(chat_id: str, nom_maitre: str, nom_animal: str, race: str, tel: str):
+    """Envoie une vraie carte contact .vcf dans Telegram (1 clic -> Ajouter aux contacts)."""
+    if not tel or len(re.sub(r"\D", "", tel)) < 6:
+        return
+    clean_name = f"{nom_maitre} ({nom_animal} - {race})".strip()
+    vcf_content = (
+        "BEGIN:VCARD\n"
+        "VERSION:3.0\n"
+        f"FN:{clean_name}\n"
+        f"N:;{clean_name};;;\n"
+        f"TEL;TYPE=CELL:{tel}\n"
+        f"NOTE:Client La Canin Mobile - Animal: {nom_animal} ({race})\n"
+        "END:VCARD\n"
+    )
+    safe_fn = re.sub(r"[^a-zA-Z0-9_-]", "_", f"{nom_maitre}_{nom_animal}")[:40] + ".vcf"
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument",
+            data={"chat_id": chat_id, "caption": f"📇 Touche cette fiche pour ajouter {nom_maitre} ({nom_animal}) à tes contacts pro !"},
+            files={"document": (safe_fn, vcf_content.encode("utf-8"), "text/vcard")},
+            timeout=15
+        )
+    except Exception as e_v:
+        log(f"[VCF SEND ERROR] : {e_v}")
 
 def send_telegram_message(chat_id: str, text: str, reply_markup: dict = None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -237,27 +270,49 @@ def transcrire_audio(file_id: str) -> str:
 def trouver_client_dans_base(texte: str) -> dict:
     if not CLIENTS_DB or not texte:
         return None
-    texte_lower = texte.lower()
-    mots = re.findall(r'[a-zA-ZÀ-ÿ0-9]+', texte_lower)
-    
-    for c in CLIENTS_DB:
-        nom_a = c.get("nom_animal", "").lower()
-        if nom_a and len(nom_a) >= 3 and nom_a in mots:
-            return c
-            
-    for c in CLIENTS_DB:
-        nom_m = c.get("nom_maitre", "").lower()
-        if nom_m and len(nom_m) >= 4 and nom_m in texte_lower:
+    import unicodedata
+    def _n(s):
+        return "".join(ch for ch in unicodedata.normalize("NFD", (s or "").lower()) if unicodedata.category(ch) != "Mn")
+
+    texte_lower = _n(texte)
+    mots = re.findall(r'[a-z0-9]+', texte_lower)
+    tel_digits = re.sub(r'\D', '', texte)
+    stop_mots = {"madame", "monsieur", "mme", "mr", "client", "maitre", "inconnu", "precise", "autre", "nouveau", "nouvelle"}
+
+    # 1. Priorité absolue : Téléphone exact (>= 8 chiffres)
+    if len(tel_digits) >= 8:
+        for c in reversed(CLIENTS_DB):
+            c_tels = "".join(c.get("tels_clean", [])) + re.sub(r'\D', '', c.get("tel", ""))
+            if tel_digits in c_tels:
+                return c
+
+    # 2. Priorité 2 : Couple Maître + Animal ensemble (évite les homonymes comme Marco/Athena vs Serrere/Athena)
+    for c in reversed(CLIENTS_DB):
+        nom_a = _n(c.get("nom_animal", ""))
+        nom_m = _n(c.get("nom_maitre", ""))
+        parts_m = [p for p in re.findall(r'[a-z0-9]+', nom_m) if len(p) >= 4 and p not in stop_mots]
+        if nom_a and len(nom_a) >= 3 and nom_a in mots and any(pm in mots for pm in parts_m):
             return c
 
-    # Recherche par nom de famille seul (ex: "Madame Corihons" -> "Isabelle Corihons")
-    stop_mots = {"madame", "monsieur", "client", "maitre", "inconnu", "precise", "autre"}
-    for c in CLIENTS_DB:
-        nom_m = c.get("nom_maitre", "").lower()
-        parts_m = [p for p in re.findall(r'[a-zA-ZÀ-ÿ0-9]+', nom_m) if len(p) >= 4 and p not in stop_mots]
-        for pm in parts_m:
-            if pm in mots:
-                return c
+    # 3. Priorité 3 : Maître seul (complet ou nom de famille)
+    for c in reversed(CLIENTS_DB):
+        nom_m = _n(c.get("nom_maitre", ""))
+        if nom_m and len(nom_m) >= 4 and nom_m in texte_lower:
+            return c
+    for c in reversed(CLIENTS_DB):
+        nom_m = _n(c.get("nom_maitre", ""))
+        parts_m = [p for p in re.findall(r'[a-z0-9]+', nom_m) if len(p) >= 4 and p not in stop_mots]
+        if any(pm in mots for pm in parts_m):
+            return c
+
+    # 4. Priorité 4 : Animal seul UNIQUEMENT si la phrase ne mentionne pas un autre maître explicite (ex: "Madame Serrere")
+    if "madame " in texte_lower or "monsieur " in texte_lower or "mme " in texte_lower or "mr " in texte_lower:
+        return None
+
+    for c in reversed(CLIENTS_DB):
+        nom_a = _n(c.get("nom_animal", ""))
+        if nom_a and len(nom_a) >= 3 and nom_a in mots:
+            return c
 
     return None
 
@@ -676,8 +731,21 @@ Tu dois analyser sa demande en tenant compte de tout le contexte ci-dessus et r�
   "message_reponse": "Phrase courte résumant la correction de catégorie"
 }}
 
-5. Si elle pose une question (créneaux libres, horaires, infos client...) :
-RÈGLE ABSOLUE : Dans REPONDRE, n'affirme JAMAIS avoir modifié, annulé, déplacé ou corrigé quoi que ce soit.
+5. Si elle demande de CRÉER UN NOUVEAU CLIENT / UNE NOUVELLE FICHE (ex: "nouveau client Madame Serrere, Athena, Bichon Frisé, cat B, 06...", "crée la fiche de...") :
+{{
+  "action": "CREER_CLIENT",
+  "nom_maitre": "nom complet du maître",
+  "nom_animal": "nom de l'animal",
+  "espece": "Chien" ou "Chat",
+  "race": "race exacte",
+  "categorie": "A" ou "B" ou "C" ou "D",
+  "telephone": "numéro de téléphone ou vide",
+  "secteur": "Urrugne" ou "Saint-Pée-sur-Nivelle",
+  "message_reponse": "Phrase courte résumant la fiche à créer"
+}}
+
+6. Si elle pose une question (créneaux libres, horaires, infos client...) :
+RÈGLE ABSOLUE : Dans REPONDRE, n'affirme JAMAIS avoir modifié, annulé, déplacé, créé ou corrigé quoi que ce soit.
 {{
   "action": "REPONDRE",
   "message_reponse": "Réponse claire, précise et directe sans moraliser ni surcharger d'explications superflues"
@@ -701,11 +769,15 @@ RÈGLE ABSOLUE : Dans REPONDRE, n'affirme JAMAIS avoir modifié, annulé, dépla
                         data["nom_animal"] = client.get("nom_animal")
                     if not data.get("nom_maitre") or data.get("nom_maitre") == "Inconnu":
                         data["nom_maitre"] = client.get("nom_maitre")
-                    data["race"] = client.get("race", data.get("race"))
-                    data["categorie"] = client.get("cat", data.get("categorie", "B"))
-                    if client.get("cat") == "A": data["duree_minutes"] = 30
-                    elif client.get("cat") == "C": data["duree_minutes"] = 90
-                    elif client.get("cat") == "D": data["duree_minutes"] = 120
+                    if not data.get("race") or data.get("race") in ["race", "Non précisée", "Inconnue", ""]:
+                        data["race"] = client.get("race", data.get("race"))
+                    if not data.get("categorie"):
+                        data["categorie"] = client.get("cat", "B")
+                    cat_u = data.get("categorie", "B").upper()
+                    if cat_u == "A": data["duree_minutes"] = 30
+                    elif cat_u == "C": data["duree_minutes"] = 90
+                    elif cat_u == "D": data["duree_minutes"] = 120
+                    else: data["duree_minutes"] = 60
                     
                 if data.get("date_proposee"):
                     data["secteur"] = deduire_secteur_par_date(data["date_proposee"])
@@ -818,8 +890,8 @@ def process_message(msg):
             send_telegram_message(chat_id, msg_conf)
             return
 
-        # 3. Actions critiques avec bouton de confirmation 1-clic (DEPLACER / ANNULER / CORRIGER_CATEGORIE)
-        if action in ["DEPLACER", "ANNULER", "CORRIGER_CATEGORIE"]:
+        # 3. Actions critiques avec bouton de confirmation 1-clic (DEPLACER / ANNULER / CORRIGER_CATEGORIE / CREER_CLIENT)
+        if action in ["DEPLACER", "ANNULER", "CORRIGER_CATEGORIE", "CREER_CLIENT"]:
             import uuid
             act_id = uuid.uuid4().hex[:10]
             PENDING_ACTIONS[act_id] = {"chat_id": chat_id, "analyse": analyse}
@@ -838,6 +910,17 @@ def process_message(msg):
                     f"🐾 *Animal* : *{analyse.get('nom_animal', '?')}*\n"
                     f"📅 *Date* : `{analyse.get('date', '?')}`\n\n"
                     f"Je supprime ce rendez-vous de Google Agenda ?"
+                )
+            elif action == "CREER_CLIENT":
+                cat_c = (analyse.get("categorie") or "B").upper()
+                resume = (
+                    f"👤 *CRÉATION DE FICHE CLIENT*\n\n"
+                    f"👤 *Maître* : *{analyse.get('nom_maitre', '?')}*\n"
+                    f"🐾 *Animal* : *{analyse.get('nom_animal', '?')}* ({analyse.get('race', 'Non précisée')})\n"
+                    f"⏱️ *Catégorie* : `Cat. {cat_c}` ({_duree_par_cat(cat_c)} min)\n"
+                    f"📞 *Téléphone* : `{analyse.get('telephone', 'Non précisé')}`\n"
+                    f"📍 *Secteur* : *{analyse.get('secteur', 'Urrugne')}*\n\n"
+                    f"J'enregistre ce client dans la base et le Google Sheet ?"
                 )
             else:
                 cat_new = (analyse.get("categorie") or "B").upper()
@@ -1403,6 +1486,34 @@ def process_callback_query(cq: dict):
                 _edit_or_send(f"✅ *Catégorie enregistrée définitivement !*\n\n🏷️ {resp.get('message', '')}{sheet_info}")
             else:
                 _edit_or_send(f"❌ *Erreur lors de la sauvegarde :* {resp.get('message', 'Erreur inconnue')}")
+
+        elif act == "CREER_CLIENT":
+            cat_c = (analyse.get("categorie") or "B").upper()
+            payload = {
+                "action": "save_client",
+                "nom_maitre": analyse.get("nom_maitre", "Non précisé"),
+                "nom_animal": analyse.get("nom_animal", ""),
+                "espece": analyse.get("espece", "Chien"),
+                "race": analyse.get("race", "Non précisée"),
+                "cat": cat_c,
+                "telephone": analyse.get("telephone", ""),
+                "secteur": analyse.get("secteur", "Urrugne")
+            }
+            resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=20).json()
+            if resp.get("status") == "success":
+                if isinstance(resp.get("client"), dict):
+                    CLIENTS_DB.append(resp["client"])
+                sheet_info = f"\n📊 [Ouvrir le tableau Google Sheet]({resp['sheet_url']})" if resp.get("sheet_url") else ""
+                _edit_or_send(f"✅ *Nouveau client enregistré dans la base !*\n\n👤 {resp.get('message', '')}{sheet_info}")
+                send_telegram_vcf(
+                    chat_id,
+                    payload["nom_maitre"],
+                    payload["nom_animal"],
+                    payload["race"],
+                    payload["telephone"]
+                )
+            else:
+                _edit_or_send(f"❌ *Erreur lors de la création :* {resp.get('message', 'Erreur inconnue')}")
     except Exception as e_cb:
         log(f"[CALLBACK ERROR] : {e_cb}")
         _edit_or_send(f"❌ *Erreur technique :* {e_cb}")

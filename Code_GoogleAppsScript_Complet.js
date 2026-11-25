@@ -38,6 +38,73 @@ function loadCategoryOverrides() {
   try { return JSON.parse(raw); } catch (e) { return {}; }
 }
 
+function loadCustomClients() {
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty("CUSTOM_CLIENTS");
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch (e) { return []; }
+}
+
+function saveCustomClient(c) {
+  var nomM = (c.nom_maitre || "").trim();
+  var nomA = (c.nom_animal || "").trim();
+  if (!nomA) return { status: "error", message: "Nom d'animal manquant" };
+
+  var cat = (c.cat || c.categorie || "B").toUpperCase();
+  var dur = cat === "A" ? "0h30" : (cat === "C" ? "1h30" : (cat === "D" ? "2h00" : "1h00"));
+  var tel = (c.tel || c.telephone || "").trim();
+  var race = (c.race || "Non précisée").trim();
+  var espece = (c.espece || "Chien").trim();
+  var secteur = (c.secteur || "Urrugne").trim();
+  var nowStr = Utilities.formatDate(new Date(), "Europe/Paris", "dd/MM/yyyy HH:mm");
+
+  var props = PropertiesService.getScriptProperties();
+  var list = loadCustomClients();
+  var fiche = {
+    id: "CANIN-TG-" + (list.length + 1),
+    nom_maitre: nomM || "Non précisé",
+    nom_animal: nomA,
+    espece: espece,
+    race: race,
+    cat: cat,
+    duree: dur,
+    secteur: secteur,
+    tel: tel,
+    tels_clean: tel ? [tel.replace(/\D/g, "")] : [],
+    updated: nowStr
+  };
+
+  var idx = -1;
+  for (var i = 0; i < list.length; i++) {
+    if (normalizeText(list[i].nom_animal) === normalizeText(nomA) &&
+        normalizeText(list[i].nom_maitre) === normalizeText(nomM)) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx >= 0) {
+    fiche.id = list[idx].id;
+    list[idx] = fiche;
+  } else {
+    list.push(fiche);
+  }
+  props.setProperty("CUSTOM_CLIENTS", JSON.stringify(list));
+
+  var sheetUrl = "";
+  try {
+    var ss = getOrCreateOverridesSheet();
+    sheetUrl = ss.getUrl();
+    var sh = ss.getSheetByName("Clients_Ajoutes");
+    if (!sh) {
+      sh = ss.insertSheet("Clients_Ajoutes");
+      sh.appendRow(["ID", "Maitre", "Animal", "Espece", "Race", "Categorie", "Duree", "Secteur", "Telephone", "Date_Ajout"]);
+    }
+    sh.appendRow([fiche.id, fiche.nom_maitre, fiche.nom_animal, fiche.espece, fiche.race, fiche.cat, fiche.duree, fiche.secteur, fiche.tel, nowStr]);
+  } catch (eSh) {}
+
+  return { status: "success", message: "Fiche enregistrée : " + fiche.nom_animal + " (" + fiche.nom_maitre + " - " + fiche.race + ", Cat. " + fiche.cat + ")", client: fiche, sheet_url: sheetUrl };
+}
+
 function saveCategoryOverride(nomAnimal, categorie, race, maitre) {
   var key = normalizeText(nomAnimal);
   if (!key) return { status: "error", message: "Nom d'animal manquant" };
@@ -124,6 +191,7 @@ function doGet(e) {
       return jsonOut({
         status: "success",
         overrides: loadCategoryOverrides(),
+        custom_clients: loadCustomClients(),
         sheet_id: props.getProperty("OVERRIDES_SHEET_ID") || ""
       });
     }
@@ -166,6 +234,11 @@ function doPost(e) {
         data.race || "",
         data.nom_maitre || ""
       ));
+    }
+
+    // 0bis. ACTION CRÉATION NOUVEAU CLIENT (PERSISTANCE GOOGLE + SHEET)
+    if (data.action === "save_client") {
+      return jsonOut(saveCustomClient(data));
     }
 
     var cal = CalendarApp.getCalendarById(CALENDAR_ID);

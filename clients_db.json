@@ -9708,5 +9708,17 @@
     "secteur": "Urrugne",
     "tel": "A renseigner",
     "tels_clean": []
+  },
+  {
+    "id": "CANIN-0695",
+    "nom_maitre": "Madame Serrere",
+    "nom_animal": "Athena",
+    "espece": "Chien",
+    "race": "Bichon Frisé",
+    "cat": "B",
+    "duree": "1h00",
+    "secteur": "Urrugne",
+    "tel": "",
+    "tels_clean": []
   }
 ]
