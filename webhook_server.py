@@ -458,14 +458,18 @@ def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephon
 
     # DICTIONNAIRE EXHAUSTIF DES GRANDS CHIENS & POILS LOURDS (Cat. C - 1h30 strict)
     races_c = [
-        "labrador", "berger allemand", "berger australien", "malinois", "beauceron",
-        "setter", "cocker", "épagneul", "epagneul", "samoyède", "samoyede", "husky",
-        "border collie", "chow", "chow-chow", "collie", "berger blanc suisse", "springer",
+        "berger allemand poil long", "berger allemand poils longs", "griffon",
+        "labrador", "berger australien", "beauceron",
+        "cocker", "épagneul", "epagneul", "samoyède", "samoyede", "husky",
+        "chow", "chow-chow", "collie", "berger blanc suisse", "springer",
         "braque", "dalmatien", "boxer", "rottweiler", "berger picard", "weimaraner", "braque de weimar"
     ]
 
     # CHIENS CLASSÉS CATÉGORIE B (1h00) PAR RÈGLE MÉTIER SANDRINE
-    races_b = ["golden", "golden retriever"]
+    races_b = [
+        "golden", "golden retriever", "setter", "border collie",
+        "berger allemand", "malinois", "maltais", "bichon maltais"
+    ]
 
     # PETITS CHIENS POIL RAS (Cat. A - 30 min)
     races_a = [
@@ -476,6 +480,9 @@ def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephon
     for r in races_d:
         if r in race_lower:
             return "D", 120, f"Chien géant / lourd {race} (Cat. D - 2h00 strict)"
+    # Vérifier d'abord les exceptions poils longs / griffons (Cat. C) avant Cat. B
+    if "berger allemand" in race_lower and ("poil long" in race_lower or "poils longs" in race_lower):
+        return "C", 90, f"Berger Allemand poils longs (Cat. C - 1h30 strict)"
     for r in races_b:
         if r in race_lower:
             return "B", 60, f"Race {race} classée en Cat. B (1h00)"
