@@ -458,7 +458,7 @@ def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephon
 
     # DICTIONNAIRE EXHAUSTIF DES GRANDS CHIENS & POILS LOURDS (Cat. C - 1h30 strict)
     races_c = [
-        "berger allemand poil long", "berger allemand poils longs", "griffon",
+        "berger allemand poil long", "berger allemand poils longs",
         "labrador", "berger australien", "beauceron",
         "cocker", "épagneul", "epagneul", "samoyède", "samoyede", "husky",
         "chow", "chow-chow", "collie", "berger blanc suisse", "springer",
@@ -468,7 +468,7 @@ def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephon
     # CHIENS CLASSÉS CATÉGORIE B (1h00) PAR RÈGLE MÉTIER SANDRINE
     races_b = [
         "golden", "golden retriever", "setter", "border collie",
-        "berger allemand", "malinois", "maltais", "bichon maltais"
+        "berger allemand", "malinois", "maltais", "bichon maltais", "griffon"
     ]
 
     # PETITS CHIENS POIL RAS (Cat. A - 30 min)
