@@ -224,11 +224,10 @@ function doPost(e) {
       location: data.location || ""
     });
 
-    var text = normalizeText(data.title + " " + (data.description || ""));
-    if (text.indexOf("saint-p") !== -1 || text.indexOf("saint pee") !== -1) {
-      event.setColor("10"); // Vert
-    } else {
-      event.setColor("9");  // Bleu
+    // Pas de bleu ni de vert pour les réservations web (couleur sobre par défaut de l'agenda).
+    // Rose flamboyant ("4") conservé uniquement si pris via Telegram par Sandrine.
+    if (data.source === "telegram") {
+      event.setColor("4");
     }
 
     return jsonOut({ status: "success", eventId: event.getId() });

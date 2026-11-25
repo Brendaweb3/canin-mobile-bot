@@ -571,7 +571,8 @@ def inscrire_dans_google_calendar(p: dict) -> bool:
             "start": start_iso,
             "end": end_iso,
             "description": desc,
-            "location": ""
+            "location": "",
+            "source": p.get("source", "web")
         }
         
         resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=20)
@@ -793,6 +794,7 @@ def process_message(msg):
             rep_phrase = analyse.get("message_reponse", "C'est noté.")
             
             send_telegram_message(chat_id, "📅 _Inscription immédiate dans ton agenda Google CANINS MOBILE..._")
+            analyse["source"] = "telegram"
             succes = inscrire_dans_google_calendar(analyse)
             status_agenda = "🎉 *👉 Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*" if succes else "⚠️ *Enregistré localement, synchronisation en attente.*"
             
