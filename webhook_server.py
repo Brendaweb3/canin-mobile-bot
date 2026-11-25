@@ -317,6 +317,45 @@ def trouver_client_dans_base(texte: str) -> dict:
 
     return None
 
+def trouver_clients_candidats(texte: str) -> list:
+    """Retourne tous les clients candidats en cas d'homonyme (ex: plusieurs Nicolas ou plusieurs Athena)."""
+    if not CLIENTS_DB or not texte:
+        return []
+    import unicodedata
+    def _n(s):
+        return "".join(ch for ch in unicodedata.normalize("NFD", (s or "").lower()) if unicodedata.category(ch) != "Mn")
+
+    texte_lower = _n(texte)
+    mots = re.findall(r'[a-z0-9]+', texte_lower)
+    tel_digits = re.sub(r'\D', '', texte)
+    stop_mots = {"madame", "monsieur", "mme", "mr", "client", "maitre", "inconnu", "precise", "autre", "nouveau", "nouvelle"}
+
+    if len(tel_digits) >= 8:
+        hits = [c for c in CLIENTS_DB if tel_digits in ("".join(c.get("tels_clean", [])) + re.sub(r'\D', '', c.get("tel", "")))]
+        if hits:
+            return hits
+
+    hits_couple = []
+    for c in CLIENTS_DB:
+        nom_a = _n(c.get("nom_animal", ""))
+        nom_m = _n(c.get("nom_maitre", ""))
+        parts_m = [p for p in re.findall(r'[a-z0-9]+', nom_m) if len(p) >= 4 and p not in stop_mots]
+        if nom_a and len(nom_a) >= 3 and nom_a in mots and any(pm in mots for pm in parts_m):
+            hits_couple.append(c)
+    if hits_couple:
+        return hits_couple
+
+    hits_maitre = []
+    for c in CLIENTS_DB:
+        nom_m = _n(c.get("nom_maitre", ""))
+        parts_m = [p for p in re.findall(r'[a-z0-9]+', nom_m) if len(p) >= 4 and p not in stop_mots]
+        if (nom_m and len(nom_m) >= 4 and nom_m in texte_lower) or any(pm in mots for pm in parts_m):
+            hits_maitre.append(c)
+    if hits_maitre:
+        return hits_maitre
+
+    return []
+
 def deduire_secteur_par_date(date_str: str) -> str:
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
@@ -856,6 +895,22 @@ def process_message(msg):
             
         # 2. Action : Inscrire directement dans l'agenda
         if action == "INSCRIRE":
+            candidats = trouver_clients_candidats(texte)
+            if len(candidats) > 1:
+                liste_txt = "\n".join(
+                    f"• *{c.get('nom_animal')}* ({c.get('race', '?')} - Cat. {c.get('cat', 'B')}) — *{c.get('nom_maitre')}* (`{c.get('tel') or 'sans tél'}`)"
+                    for c in candidats[:5]
+                )
+                msg_ambig = (
+                    f"{salutation}{vocal_tag}⚠️ *Plusieurs fiches correspondent dans la base :*\n\n"
+                    f"{liste_txt}\n\n"
+                    f"👉 *Lequel est-ce ?* Précise-moi le **nom de famille**, le **prénom de l'animal** ou le **numéro de téléphone** avant que j'inscrive."
+                )
+                USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": msg_ambig})
+                save_states()
+                send_telegram_message(chat_id, msg_ambig)
+                return
+
             animal = analyse.get("nom_animal", "Toilettage")
             race = analyse.get("race", "")
             cat = analyse.get("categorie", "B")
