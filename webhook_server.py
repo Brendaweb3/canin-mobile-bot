@@ -249,7 +249,16 @@ def trouver_client_dans_base(texte: str) -> dict:
         nom_m = c.get("nom_maitre", "").lower()
         if nom_m and len(nom_m) >= 4 and nom_m in texte_lower:
             return c
-            
+
+    # Recherche par nom de famille seul (ex: "Madame Corihons" -> "Isabelle Corihons")
+    stop_mots = {"madame", "monsieur", "client", "maitre", "inconnu", "precise", "autre"}
+    for c in CLIENTS_DB:
+        nom_m = c.get("nom_maitre", "").lower()
+        parts_m = [p for p in re.findall(r'[a-zA-ZÀ-ÿ0-9]+', nom_m) if len(p) >= 4 and p not in stop_mots]
+        for pm in parts_m:
+            if pm in mots:
+                return c
+
     return None
 
 def deduire_secteur_par_date(date_str: str) -> str:
