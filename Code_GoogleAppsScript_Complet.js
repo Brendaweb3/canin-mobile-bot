@@ -212,6 +212,7 @@ function doGet(e) {
         title: ev.getTitle(),
         start: ev.getStartTime().toISOString(),
         end: ev.getEndTime().toISOString(),
+        created: ev.getDateCreated() ? ev.getDateCreated().toISOString() : "",
         description: ev.getDescription() || ""
       });
     }

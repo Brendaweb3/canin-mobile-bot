@@ -44,7 +44,24 @@ BOT_TOKEN = "8901313647:AAFr4Bavv6Vpm4L6vyAl2BWLwqa8lae5S9k"
 # Clé active vérifiée 200 OK (KEY_74)
 GEMINI_KEY = base64.b64decode("QVEuQWI4Uk42SUQxNXJxSUlxN2k1aEtheWFsTjJFaGVfWDNHejg2ZG5EYTZoWTN2U0JvTkE=").decode("utf-8")
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxSMe4ThGmSAFiL8_hIECTLih9AptUKGA61GCaEHQUmggZ775skFKJZqhBPV4mcRWUj/exec"
+MACRODROID_WEBHOOK_URL = "https://trigger.macrodroid.com/3243d5a6-d6ff-4738-8ed1-20a2edd05a00/sms_canin"
 PORT = int(os.environ.get("PORT", 10000))
+RAPPELS_ENVOYES = set()
+
+def envoyer_sms_macrodroid(tel: str, message: str) -> bool:
+    """Envoie un SMS gratuit via MacroDroid (téléphone de Sandrine) uniquement vers un mobile 06/07."""
+    digits = re.sub(r"\D", "", tel or "")
+    if digits.startswith("33") and len(digits) == 11:
+        digits = "0" + digits[2:]
+    if len(digits) != 10 or not digits.startswith(("06", "07")):
+        return False
+    try:
+        r = requests.get(MACRODROID_WEBHOOK_URL, params={"tel": digits, "msg": message}, timeout=10)
+        log(f"[MACRODROID SMS] -> {digits} | HTTP {r.status_code}")
+        return r.status_code == 200
+    except Exception as e_md:
+        log(f"[MACRODROID SMS ERROR] : {e_md}")
+        return False
 
 # Chargement base clients (694 fiches)
 CLIENTS_DB = []
@@ -1278,6 +1295,11 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                             )
                             for cid in ["6022976635", "8771111289"]:
                                 send_telegram_message(cid, alert_mv)
+                            sms_mv = (
+                                f"Bonjour ! Votre RDV pour {nom_a} a bien été déplacé au {date_fr_label} à {heure_str.replace(':', 'h')} "
+                                f"({lieu_exact}, {sec}). À très vite ! Sandrine - La Canin Mobile"
+                            )
+                            threading.Thread(target=envoyer_sms_macrodroid, args=(tel, sms_mv), daemon=True).start()
                             self.send_response(200)
                             self.send_header("Content-Type", "application/json; charset=utf-8")
                             self.end_headers()
@@ -1315,6 +1337,12 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
 
                     # Inscription en direct dans Google Calendar
                     succes = inscrire_dans_google_calendar(booking_payload)
+                    if succes and tel:
+                        sms_conf = (
+                            f"Bonjour ! Votre RDV pour {nom_a} est confirmé le {date_fr_label} à {heure_str.replace(':', 'h')} "
+                            f"({lieu_exact}, {sec}). Pensez à prévenir 24h avant en cas d'empêchement. Sandrine - La Canin Mobile"
+                        )
+                        threading.Thread(target=envoyer_sms_macrodroid, args=(tel, sms_conf), daemon=True).start()
 
                     # 4. Enregistrement local pour verrouiller le créneau immédiatement
                     appts = load_all_appointments()
@@ -1596,6 +1624,43 @@ def watchdog_surveillance_boucle():
                 msg_d += "👉 Intervention requise."
                 for cid in ["6022976635", "8771111289"]:
                     send_telegram_message(cid, msg_d)
+
+            # Envoi automatique des rappels J-1 à 18h00 (uniquement pour les RDV pris >= 2 jours à l'avance)
+            paris_tz = timezone(timedelta(hours=1))
+            now_paris = datetime.now(paris_tz)
+            if now_paris.hour == 18 and now_paris.minute < 15:
+                demain = (now_paris + timedelta(days=1)).date()
+                for ev in live:
+                    ev_id = ev.get("id", "")
+                    if not ev_id or ev_id in RAPPELS_ENVOYES:
+                        continue
+                    st_iso = ev.get("start", "")
+                    cr_iso = ev.get("created", "")
+                    if not st_iso:
+                        continue
+                    try:
+                        dt_ev = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(paris_tz)
+                        if dt_ev.date() != demain:
+                            continue
+                        if cr_iso:
+                            dt_cr = datetime.fromisoformat(cr_iso.replace("Z", "+00:00")).astimezone(paris_tz)
+                            if (dt_ev.date() - dt_cr.date()).days < 2:
+                                continue # Pris la veille pour le lendemain -> pas de rappel inutile
+                        desc = ev.get("description", "")
+                        m_tel = re.search(r'(0[67](?:[\s\.]?\d{2}){4})', desc)
+                        tel_rappel = m_tel.group(1) if m_tel else ""
+                        if not tel_rappel:
+                            continue
+                        titre_clean = ev.get("title", "").replace("\n", " ")
+                        h_rap = dt_ev.strftime("%Hh%M")
+                        msg_rap = (
+                            f"Bonjour ! Petit rappel pour votre RDV demain à {h_rap} ({titre_clean}) avec Sandrine - La Canin Mobile. "
+                            f"En cas d'empêchement, vous pouvez annuler ou déplacer ici : https://canin-mobile-bot.onrender.com/reserver"
+                        )
+                        if envoyer_sms_macrodroid(tel_rappel, msg_rap):
+                            RAPPELS_ENVOYES.add(ev_id)
+                    except Exception:
+                        pass
         except Exception as e_wd:
             log(f"[WATCHDOG ERROR] : {e_wd}")
 
