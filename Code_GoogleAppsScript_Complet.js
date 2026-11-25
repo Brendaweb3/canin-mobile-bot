@@ -242,6 +242,23 @@ function doPost(e) {
       return jsonOut(saveCustomClient(data));
     }
 
+    // 0ter. ACTION REPEINTURE DES ANCIENS RDV BLEUS ("9") ET VERT FONCÉ ("10") EN AVOCAT ("2")
+    if (data.action === "recolor_blue_green") {
+      var calRec = CalendarApp.getCalendarById(CALENDAR_ID);
+      if (!calRec) return jsonOut({ status: "error", message: "Agenda introuvable" });
+      var evsRec = calRec.getEvents(new Date(2026, 10, 25), new Date(2027, 2, 1));
+      var countRec = 0;
+      for (var rIdx = 0; rIdx < evsRec.length; rIdx++) {
+        var evR = evsRec[rIdx];
+        var col = (evR.getColor() || "").toString();
+        if (col === "9" || col === "10") {
+          evR.setColor("2");
+          countRec++;
+        }
+      }
+      return jsonOut({ status: "success", recolored_count: countRec, message: countRec + " événement(s) repeints en vert avocat (Sauge)." });
+    }
+
     var cal = CalendarApp.getCalendarById(CALENDAR_ID);
     if (!cal) return jsonOut({ status: "error", message: "Agenda introuvable" });
 
