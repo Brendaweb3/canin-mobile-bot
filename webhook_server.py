@@ -43,7 +43,7 @@ def log(msg: str):
 BOT_TOKEN = "8901313647:AAFr4Bavv6Vpm4L6vyAl2BWLwqa8lae5S9k"
 # Clé active vérifiée 200 OK (KEY_74)
 GEMINI_KEY = base64.b64decode("QVEuQWI4Uk42SUQxNXJxSUlxN2k1aEtheWFsTjJFaGVfWDNHejg2ZG5EYTZoWTN2U0JvTkE=").decode("utf-8")
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzwHTfG06UZH6mNMP08dfhDoAtNnd5IFZ0oOt31S-fU4r_0rqDPyECHcV61dQE_DYGS/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLWORFe9UaSNSlyd82Hyw0ZztpvoQy9rOmQ-SBRUNJftNjfq5WE9dJYiEKT_aF8KHX/exec"
 MACRODROID_WEBHOOK_URL = "https://trigger.macrodroid.com/3243d5a6-d6ff-4738-8ed1-20a2edd05a00/sms_canin"
 PORT = int(os.environ.get("PORT", 10000))
 RAPPELS_ENVOYES = set()

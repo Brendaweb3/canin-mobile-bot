@@ -14,7 +14,7 @@ import requests
 import json
 from datetime import datetime
 
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzwHTfG06UZH6mNMP08dfhDoAtNnd5IFZ0oOt31S-fU4r_0rqDPyECHcV61dQE_DYGS/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLWORFe9UaSNSlyd82Hyw0ZztpvoQy9rOmQ-SBRUNJftNjfq5WE9dJYiEKT_aF8KHX/exec"
 RENDER_URL = "https://canin-mobile-bot.onrender.com/reserver"
 TELEGRAM_BOT_TOKEN = "8901313647:AAFr4Bavv6Vpm4L6vyAl2BWLwqa8lae5S9k"
 ALERT_CHAT_IDS = ["6022976635", "8771111289"]
