@@ -1853,8 +1853,8 @@ def watchdog_surveillance_boucle():
                         titre_clean = ev.get("title", "").replace("\n", " ")
                         h_rap = dt_ev.strftime("%Hh%M")
                         msg_rap = (
-                            f"Bonjour ! Petit rappel pour votre RDV demain à {h_rap} ({titre_clean}) avec Sandrine - La Canin Mobile. "
-                            f"En cas d'empêchement, merci d'annuler ou déplacer au moins 24h avant pour libérer la place pour un autre toutou : "
+                            f"Bonjour ! Rappel pour votre RDV demain à {h_rap} ({titre_clean}) avec Sandrine - La Canin Mobile. "
+                            f"Sandrine veille à respecter le temps alloué à chaque animal pour vous recevoir à l'heure ; par respect pour son travail, merci de prévenir au moins 24h avant en cas d'empêchement : "
                             f"https://canin-mobile-bot.onrender.com/reserver#annuler"
                         )
                         if envoyer_sms_macrodroid(tel_rappel, msg_rap):
