@@ -1854,7 +1854,8 @@ def watchdog_surveillance_boucle():
                         h_rap = dt_ev.strftime("%Hh%M")
                         msg_rap = (
                             f"Bonjour ! Petit rappel pour votre RDV demain à {h_rap} ({titre_clean}) avec Sandrine - La Canin Mobile. "
-                            f"En cas d'empêchement, vous pouvez annuler ou déplacer ici : https://canin-mobile-bot.onrender.com/reserver#annuler"
+                            f"Attention : dernier délai aujourd'hui (24h avant) pour annuler gratuitement, sinon le rendez-vous est dû. "
+                            f"Lien rapide : https://canin-mobile-bot.onrender.com/reserver#annuler"
                         )
                         if envoyer_sms_macrodroid(tel_rappel, msg_rap):
                             RAPPELS_ENVOYES.add(ev_id)
