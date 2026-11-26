@@ -287,6 +287,38 @@
       margin-top: 12px;
     }
 
+    .mode-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      background: #f1f5f9;
+      padding: 5px;
+      border-radius: 12px;
+      margin-bottom: 18px;
+    }
+    .mode-tab {
+      border: none;
+      background: transparent;
+      padding: 10px 8px;
+      border-radius: 9px;
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #475569;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .mode-tab.active {
+      background: #ffffff;
+      color: var(--primary-dark);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+    }
+    .mode-tab.active-cancel {
+      background: #dc2626;
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+    }
+
     /* Écran succès */
     .success {
       display: none;
@@ -342,6 +374,10 @@
 
     <!-- FORMULAIRE PRINCIPAL -->
     <div class="card" id="booking-card">
+      <div class="mode-tabs">
+        <button type="button" id="tab-book" class="mode-tab active" onclick="switchMode('book')">📅 Prendre ou déplacer un RDV</button>
+        <button type="button" id="tab-cancel" class="mode-tab" onclick="switchMode('cancel')">❌ Annuler un RDV</button>
+      </div>
       <form id="booking-form">
         <div class="step-title">📍 1. Votre secteur de tournée</div>
         <div class="field">
@@ -415,7 +451,7 @@
       </form>
 
       <!-- Lien d'annulation -->
-      <a class="cancel-link" onclick="toggleCancelSection()">Annuler ou libérer un rendez-vous existant</a>
+      <a class="cancel-link" id="cancel-link-bottom" onclick="toggleCancelSection()">Annuler ou libérer un rendez-vous existant</a>
 
       <!-- Volet d'annulation -->
       <div id="cancel-section" class="cancel-section">
@@ -486,9 +522,31 @@
   <script>
     let joursData = [];
 
+    function switchMode(mode) {
+      const form = document.getElementById('booking-form');
+      const sec = document.getElementById('cancel-section');
+      const tabBook = document.getElementById('tab-book');
+      const tabCancel = document.getElementById('tab-cancel');
+      const linkBottom = document.getElementById('cancel-link-bottom');
+
+      if (mode === 'cancel') {
+        if (form) form.style.display = 'none';
+        if (sec) sec.style.display = 'block';
+        if (linkBottom) linkBottom.style.display = 'none';
+        if (tabBook) tabBook.className = 'mode-tab';
+        if (tabCancel) tabCancel.className = 'mode-tab active-cancel';
+      } else {
+        if (form) form.style.display = 'block';
+        if (sec) sec.style.display = 'none';
+        if (linkBottom) linkBottom.style.display = 'block';
+        if (tabBook) tabBook.className = 'mode-tab active';
+        if (tabCancel) tabCancel.className = 'mode-tab';
+      }
+    }
+
     function toggleCancelSection() {
       const sec = document.getElementById('cancel-section');
-      sec.style.display = (sec.style.display === 'block') ? 'none' : 'block';
+      switchMode(sec.style.display === 'block' ? 'book' : 'cancel');
     }
 
     async function chargerCreneaux() {
@@ -714,12 +772,12 @@
         const data = await res.json();
 
         if (data.status === 'success') {
-          feedback.style.color = '#16a34a';
+          feedback.style.color = '#15803d';
           feedback.innerText = "✓ " + data.message;
           btn.innerText = "Rendez-vous annulé";
         } else {
           feedback.style.color = '#dc2626';
-          feedback.innerText = data.message || "Aucun rendez-vous trouvé avec ce numéro.";
+          feedback.innerText = data.message || "Aucun rendez-vous trouvé avec ce numéro ou ce nom dans l'agenda.";
           btn.disabled = false;
           btn.innerText = "Confirmer l'annulation";
         }
@@ -731,7 +789,12 @@
       }
     }
 
-    window.addEventListener('DOMContentLoaded', chargerCreneaux);
+    window.addEventListener('DOMContentLoaded', () => {
+      if (window.location.hash === '#annuler') {
+        switchMode('cancel');
+      }
+      chargerCreneaux();
+    });
   </script>
 </body>
 </html>

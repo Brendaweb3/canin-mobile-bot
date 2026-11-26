@@ -152,7 +152,7 @@ function saveCategoryOverride(nomAnimal, categorie, race, maitre) {
   };
 }
 
-function findMatchingEvent(cal, targetDate, targetNom, targetTel, eventId) {
+function findMatchingEvent(cal, targetDate, targetNom, targetTel, eventId, targetMaitre) {
   if (eventId) {
     try {
       var byId = cal.getEventById(eventId);
@@ -160,19 +160,25 @@ function findMatchingEvent(cal, targetDate, targetNom, targetTel, eventId) {
     } catch (e) {}
   }
 
-  var searchStart = targetDate ? new Date(targetDate + "T00:00:00+01:00") : new Date();
-  var searchEnd = targetDate ? new Date(targetDate + "T23:59:59+01:00") : new Date(Date.now() + 90 * 86400000);
+  var searchStart = targetDate ? new Date(targetDate + "T00:00:00+01:00") : new Date(Date.now() - 86400000);
+  var searchEnd = targetDate ? new Date(targetDate + "T23:59:59+01:00") : new Date(Date.now() + 120 * 86400000);
   var events = cal.getEvents(searchStart, searchEnd);
   var normNom = normalizeText(targetNom);
+  var normMaitre = normalizeText(targetMaitre);
   var cleanTel = (targetTel || "").replace(/\s+/g, "").replace(/\./g, "").trim();
 
   for (var i = 0; i < events.length; i++) {
     var ev = events[i];
     var evTitle = normalizeText(ev.getTitle());
-    var evDesc = normalizeText(ev.getDescription()).replace(/\s+/g, "").replace(/\./g, "");
-    var matchAnimal = normNom && evTitle.indexOf(normNom) !== -1;
-    var matchTel = cleanTel && cleanTel.length >= 8 && evDesc.indexOf(cleanTel) !== -1;
-    if (matchAnimal || matchTel) {
+    var evDescRaw = normalizeText(ev.getDescription());
+    var evTitleNoSpace = evTitle.replace(/\s+/g, "").replace(/\./g, "");
+    var evDescNoSpace = evDescRaw.replace(/\s+/g, "").replace(/\./g, "");
+
+    var matchTel = cleanTel && cleanTel.length >= 8 && (evDescNoSpace.indexOf(cleanTel) !== -1 || evTitleNoSpace.indexOf(cleanTel) !== -1);
+    var matchAnimal = normNom && (evTitle.indexOf(normNom) !== -1 || evDescRaw.indexOf(normNom) !== -1);
+    var matchMaitre = normMaitre && (evTitle.indexOf(normMaitre) !== -1 || evDescRaw.indexOf(normMaitre) !== -1);
+
+    if (matchTel || matchAnimal || matchMaitre) {
       return ev;
     }
   }
@@ -264,18 +270,27 @@ function doPost(e) {
 
     // 1. ACTION DE SUPPRESSION RÉELLE D'UN RENDEZ-VOUS ANNULÉ
     if (data.action === "delete") {
-      var evDel = findMatchingEvent(cal, data.date || "", data.nom_animal || "", data.telephone || "", data.eventId || "");
+      var evDel = findMatchingEvent(cal, data.date || "", data.nom_animal || "", data.telephone || "", data.eventId || "", data.nom_maitre || "");
       if (!evDel) {
         return jsonOut({ status: "not_found", deleted_count: 0, message: "Rendez-vous introuvable dans Google Agenda" });
       }
       var deletedTitle = evDel.getTitle();
+      var deletedDesc = evDel.getDescription() || "";
+      var deletedStart = evDel.getStartTime().toISOString();
       evDel.deleteEvent();
-      return jsonOut({ status: "success", deleted_count: 1, message: "Supprimé : " + deletedTitle });
+      return jsonOut({
+        status: "success",
+        deleted_count: 1,
+        title: deletedTitle,
+        description: deletedDesc,
+        start: deletedStart,
+        message: "Supprimé : " + deletedTitle
+      });
     }
 
     // 2. ACTION DE DÉPLACEMENT SÉCURISÉ D'UN RENDEZ-VOUS EXISTANT
     if (data.action === "move") {
-      var evMove = findMatchingEvent(cal, data.old_date || "", data.nom_animal || "", data.telephone || "", data.eventId || "");
+      var evMove = findMatchingEvent(cal, data.old_date || "", data.nom_animal || "", data.telephone || "", data.eventId || "", data.nom_maitre || "");
       if (!evMove) {
         return jsonOut({ status: "not_found", message: "Rendez-vous d'origine introuvable pour " + (data.nom_animal || "") });
       }
@@ -288,17 +303,27 @@ function doPost(e) {
         }
       }
       evMove.setTime(newStart, newEnd);
+      var shStr = Utilities.formatDate(newStart, "Europe/Paris", "HH'h'mm");
+      var ehStr = Utilities.formatDate(newEnd, "Europe/Paris", "HH'h'mm");
       if (data.new_title) {
-        evMove.setTitle(data.new_title);
+        var newTitleStr = data.new_title.toString().trim();
+        if (!/^\d{2}h\d{2}/.test(newTitleStr)) {
+          newTitleStr = shStr + " à " + ehStr + "\n" + newTitleStr;
+        }
+        evMove.setTitle(newTitleStr);
       } else {
         // Met à jour le préfixe horaire du titre existant
         var lines = evMove.getTitle().split("\n");
         var labelPart = lines.length > 1 ? lines.slice(1).join("\n") : evMove.getTitle();
-        var shStr = Utilities.formatDate(newStart, "Europe/Paris", "HH'h'mm");
-        var ehStr = Utilities.formatDate(newEnd, "Europe/Paris", "HH'h'mm");
         evMove.setTitle(shStr + " à " + ehStr + "\n" + labelPart);
       }
-      return jsonOut({ status: "success", eventId: evMove.getId(), message: "Rendez-vous déplacé avec succès" });
+      return jsonOut({
+        status: "success",
+        eventId: evMove.getId(),
+        title: evMove.getTitle(),
+        description: evMove.getDescription() || "",
+        message: "Rendez-vous déplacé avec succès"
+      });
     }
 
     // 3. ACTION D'INSERTION D'UN RENDEZ-VOUS

@@ -63,6 +63,82 @@ def envoyer_sms_macrodroid(tel: str, message: str) -> bool:
         log(f"[MACRODROID SMS ERROR] : {e_md}")
         return False
 
+def _get_paris_tz():
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo("Europe/Paris")
+    except Exception:
+        return timezone(timedelta(hours=1))
+
+def _extraire_mobile_fr(*textes: str) -> str:
+    """Extrait le premier numéro mobile français 06/07 normalisé (10 chiffres) depuis un ou plusieurs textes."""
+    for t in textes:
+        if not t:
+            continue
+        m = re.search(r'(?:(?:\+33|0033)[\s\.]?|0)([67](?:[\s\.]?\d{2}){4})', str(t))
+        if m:
+            digits = "0" + re.sub(r"\D", "", m.group(1))
+            if len(digits) == 10:
+                return digits
+    return ""
+
+def _formater_date_heure_fr(iso_or_date: str, time_str: str = "") -> tuple:
+    """Retourne (date_fr 'JJ/MM/AAAA', heure 'HHhMM') ou ('', '') si non parsable."""
+    raw = (iso_or_date or "").strip()
+    if raw:
+        if "T" in raw:
+            try:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(_get_paris_tz())
+                return dt.strftime("%d/%m/%Y"), dt.strftime("%Hh%M")
+            except Exception:
+                pass
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
+            try:
+                dt_d = datetime.strptime(raw, "%Y-%m-%d")
+                date_fr = dt_d.strftime("%d/%m/%Y")
+                heure_fr = ""
+                t_clean = (time_str or "").strip()
+                m_h = re.match(r"^(\d{2})[:h](\d{2})", t_clean)
+                if m_h:
+                    heure_fr = f"{m_h.group(1)}h{m_h.group(2)}"
+                return date_fr, heure_fr
+            except Exception:
+                pass
+    return "", ""
+
+def _construire_sms_annulation(nom_animal: str, date_fr: str, heure: str) -> str:
+    nom_a = (nom_animal or "votre animal").strip()
+    if date_fr and heure:
+        return f"Bonjour ! Votre RDV du {date_fr} à {heure} pour {nom_a} avec Sandrine - La Canin Mobile est bien annulé. À bientôt !"
+    if date_fr:
+        return f"Bonjour ! Votre RDV du {date_fr} pour {nom_a} avec Sandrine - La Canin Mobile est bien annulé. À bientôt !"
+    return f"Bonjour ! Votre RDV pour {nom_a} avec Sandrine - La Canin Mobile est bien annulé. À bientôt !"
+
+def _append_history(chat_id: str, role: str, text: str, save: bool = True):
+    if chat_id not in USER_STATES:
+        USER_STATES[chat_id] = {"historique": [], "last_greeted_date": ""}
+    if "historique" not in USER_STATES[chat_id]:
+        USER_STATES[chat_id]["historique"] = []
+    USER_STATES[chat_id]["historique"].append({"role": role, "text": text})
+    if len(USER_STATES[chat_id]["historique"]) > 12:
+        USER_STATES[chat_id]["historique"] = USER_STATES[chat_id]["historique"][-12:]
+    if save:
+        save_states()
+
+def _trouver_client_par_champs(nom_animal: str = "", nom_maitre: str = "", telephone: str = "") -> dict:
+    """Recherche robuste dans CLIENTS_DB par téléphone, couple maître+animal, animal ou maître."""
+    for query in [
+        f"{telephone} {nom_animal} {nom_maitre}".strip(),
+        f"{nom_animal} {nom_maitre}".strip(),
+        nom_animal.strip(),
+        nom_maitre.strip(),
+    ]:
+        if query:
+            c = trouver_client_dans_base(query)
+            if c:
+                return c
+    return None
+
 # Chargement base clients (694 fiches)
 CLIENTS_DB = []
 if os.path.exists(CLIENTS_PATH):
@@ -758,7 +834,8 @@ Dernière phrase de Sandrine : "{texte}"
 
 Tu dois analyser sa demande en tenant compte de tout le contexte ci-dessus et répondre UNIQUEMENT par ce JSON strict :
 
-1. Si elle demande de réserver, noter, inscrire ou bloquer un NOUVEAU créneau (ex: "réserve pour mercredi à 13h30", "ajoute Pearl", "mets Eden...") :
+1. Si elle demande de réserver, noter, inscrire, prendre, créer ou bloquer un NOUVEAU créneau / rendez-vous (toute demande contenant une date ou une heure pour prendre/créer/bloquer un rendez-vous, ex: "Créer rdv...", "Prendre créneau...", "Rdv Savanah...", "réserve pour mercredi à 13h30", "ajoute Pearl", "mets Eden...") :
+RÈGLE STRICTE : Toute demande contenant une date/heure pour prendre, créer ou bloquer un rendez-vous est TOUJOURS "INSCRIRE", JAMAIS "CREER_CLIENT" (réservé uniquement à la création d'une fiche client sans rendez-vous) et JAMAIS "DEPLACER" (sauf s'il y a explicitement un mot de déplacement/report comme "déplace", "décale", "reporte").
 {{
   "action": "INSCRIRE",
   "nom_animal": "nom de l'animal déduit de la phrase ou de l'historique",
@@ -772,10 +849,12 @@ Tu dois analyser sa demande en tenant compte de tout le contexte ci-dessus et r�
   "message_reponse": "Phrase courte et chaleureuse confirmant l'inscription"
 }}
 
-2. Si elle demande de DÉPLACER ou REPORTER un rendez-vous déjà existant (ex: "déplace Farah du 28 novembre à 16h", "décale Alba à demain 10h") :
+2. Si elle demande explicitement de DÉPLACER ou REPORTER un rendez-vous déjà existant (ex: "déplace Farah du 28 novembre à 16h", "décale Alba à demain 10h") :
 {{
   "action": "DEPLACER",
   "nom_animal": "nom de l'animal",
+  "nom_maitre": "nom du maître si précisé sinon vide (optionnel)",
+  "nouveau_nom_animal": "nouveau nom de l'animal si précisé sinon vide (optionnel)",
   "old_date": "YYYY-MM-DD",
   "new_date": "YYYY-MM-DD",
   "new_heure": "HH:MM",
@@ -787,6 +866,8 @@ Tu dois analyser sa demande en tenant compte de tout le contexte ci-dessus et r�
 {{
   "action": "ANNULER",
   "nom_animal": "nom de l'animal",
+  "nom_maitre": "nom du maître si précisé sinon vide (optionnel)",
+  "nouveau_nom_animal": "nouveau nom de l'animal si précisé sinon vide (optionnel)",
   "date": "YYYY-MM-DD",
   "message_reponse": "Phrase courte résumant l'annulation proposée"
 }}
@@ -801,7 +882,7 @@ Tu dois analyser sa demande en tenant compte de tout le contexte ci-dessus et r�
   "message_reponse": "Phrase courte résumant la correction de catégorie"
 }}
 
-5. Si elle demande de CRÉER UN NOUVEAU CLIENT / UNE NOUVELLE FICHE (ex: "nouveau client Madame Serrere, Athena, Bichon Frisé, cat B, 06...", "crée la fiche de...") :
+5. Si elle demande UNIQUEMENT de CRÉER UN NOUVEAU CLIENT / UNE NOUVELLE FICHE SANS RENDEZ-VOUS / SANS DATE NI HEURE (ex: "nouveau client Madame Serrere, Athena, Bichon Frisé, cat B, 06...", "crée la fiche de...") :
 {{
   "action": "CREER_CLIENT",
   "nom_maitre": "nom complet du maître",
@@ -880,6 +961,14 @@ def process_message(msg):
                 return
             
         if not texte: return
+
+        if texte.lower() in ["/reset", "reset", "/clear"]:
+            USER_STATES[chat_id]["historique"] = []
+            for aid in [k for k, v in PENDING_ACTIONS.items() if v.get("chat_id") == chat_id]:
+                PENDING_ACTIONS.pop(aid, None)
+            save_states()
+            send_telegram_message(chat_id, "🔄 Mémoire de la conversation remise à zéro ! Que souhaites-tu faire ?")
+            return
         
         # Salutation UNIQUEMENT si c'est la toute première interaction du jour
         salutation = ""
@@ -1023,6 +1112,13 @@ def process_message(msg):
                     {"text": "❌ Non, annuler", "callback_data": f"cancel:{act_id}"}
                 ]]
             }
+            short_hist = {
+                "DEPLACER": f"Proposition de déplacement pour {analyse.get('nom_animal', '?')} ({analyse.get('old_date', '?')} -> {analyse.get('new_date', '?')} à {analyse.get('new_heure', '?')}) en attente de confirmation.",
+                "ANNULER": f"Proposition d'annulation pour {analyse.get('nom_animal', '?')} le {analyse.get('date', '?')} en attente de confirmation.",
+                "CORRIGER_CATEGORIE": f"Proposition de correction de catégorie pour {analyse.get('nom_animal', '?')} -> Cat. {(analyse.get('categorie') or 'B').upper()} en attente de confirmation.",
+                "CREER_CLIENT": f"Proposition de création de fiche client pour {analyse.get('nom_maitre', '?')} / {analyse.get('nom_animal', '?')} en attente de confirmation.",
+            }
+            _append_history(chat_id, "assistant", short_hist[action])
             send_telegram_message(chat_id, f"{salutation}{vocal_tag}{resume}", reply_markup=kb)
             return
 
@@ -1412,9 +1508,11 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                 try:
                     payload = json.loads(post_data.decode("utf-8"))
                     tel = payload.get("telephone", "").replace(" ", "").replace(".", "")
-                    nom_a = payload.get("nom_animal", "").strip().lower()
+                    nom_a_raw = payload.get("nom_animal", "").strip()
+                    nom_a = nom_a_raw.lower()
 
                     # 1. Suppression RÉELLE et directe dans Google Calendar via Apps Script
+                    r_del_json = {}
                     try:
                         del_payload = {
                             "action": "delete",
@@ -1423,8 +1521,12 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                         }
                         r_del = requests.post(APPS_SCRIPT_URL, json=del_payload, timeout=15)
                         log(f"[SUPPRESSION GOOGLE CALENDAR] Réponse : {r_del.text}")
+                        if r_del.status_code == 200:
+                            r_del_json = r_del.json()
                     except Exception as e_del_gcal:
                         log(f"[SUPPRESSION GCAL ERROR] : {e_del_gcal}")
+
+                    gcal_deleted = r_del_json.get("status") == "success"
 
                     # 2. Suppression dans le suivi local
                     appts = load_all_appointments()
@@ -1439,17 +1541,42 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                                 continue
                         new_appts.append(a)
 
-                    if found or nom_a or tel:
+                    if gcal_deleted or found:
                         save_all_appointments(new_appts)
-                        titre_affiche = found.get('title') if found else (nom_a.capitalize() if nom_a else "Rendez-vous")
-                        date_affiche = found.get('date') if found else "date réservée"
-                        heure_affiche = found.get('time', '')[:5].replace(':', 'h') if found else ""
+                        raw_title = (r_del_json.get("title") or (found.get("title") if found else "") or "").strip()
+                        titre_affiche = raw_title.replace("\n", " ").strip() or (nom_a_raw if nom_a_raw else "Rendez-vous")
 
+                        date_fr, heure_fr = _formater_date_heure_fr(r_del_json.get("start", ""))
+                        if not date_fr and found:
+                            date_fr, heure_fr = _formater_date_heure_fr(found.get("date", ""), found.get("time", ""))
+
+                        date_affiche = date_fr or (found.get("date") if found else "date réservée")
+                        heure_affiche = heure_fr or (found.get("time", "")[:5].replace(":", "h") if found else "")
+
+                        nom_pour_sms = nom_a_raw
+                        if not nom_pour_sms and raw_title:
+                            ligne_nom = raw_title.split("\n")[-1].strip()
+                            nom_pour_sms = ligne_nom.split("(")[0].strip() or titre_affiche
+
+                        tel_sms = _extraire_mobile_fr(
+                            tel,
+                            r_del_json.get("description", ""),
+                            found.get("description", "") if found else ""
+                        )
+                        sms_statut = "Non envoyé (pas de mobile 06/07)"
+                        if tel_sms:
+                            sms_annul = _construire_sms_annulation(nom_pour_sms, date_fr, heure_fr)
+                            threading.Thread(target=envoyer_sms_macrodroid, args=(tel_sms, sms_annul), daemon=True).start()
+                            sms_statut = f"SMS de confirmation envoyé vers {tel_sms}"
+
+                        horodate = datetime.now(_get_paris_tz()).strftime("%d/%m/%Y à %Hh%M")
                         alert = f"""❌ *RENDEZ-VOUS ANNULÉ PAR LE CLIENT (Par courtoisie)*
 
 🐾 *Rendez-vous libéré* : *{titre_affiche}*
 📅 *Date* : *{date_affiche}* {heure_affiche}
+🕒 *Horodatage* : {horodate}
 🗑️ *Action* : Supprimé automatiquement de Google Agenda CANINS MOBILE !
+📲 *Preuve SMS* : {sms_statut}
 
 👉 *Ce créneau est de nouveau libre pour un autre animal sur le site !*"""
                         for cid in ["6022976635", "8771111289"]:
@@ -1464,7 +1591,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                         self.send_response(200)
                         self.send_header("Content-Type", "application/json")
                         self.end_headers()
-                        self.wfile.write(json.dumps({"status": "not_found", "message": "Aucun rendez-vous trouvé avec ce numéro de téléphone après le 24 novembre."}).encode("utf-8"))
+                        self.wfile.write(json.dumps({"status": "not_found", "message": "Aucun rendez-vous trouvé avec ce numéro ou ce nom dans l'agenda."}).encode("utf-8"))
                         return
                 except Exception as e_annul:
                     log(f"[API ANNULER ERROR] : {e_annul}")
@@ -1530,6 +1657,14 @@ def process_callback_query(cq: dict):
         return
 
     if decision == "cancel":
+        if chat_id:
+            if chat_id not in USER_STATES:
+                USER_STATES[chat_id] = {"historique": [], "last_greeted_date": ""}
+            USER_STATES[chat_id]["historique"] = [{
+                "role": "assistant",
+                "text": "[Action précédente annulée par Sandrine — traiter le prochain message comme une nouvelle demande indépendante]"
+            }]
+            save_states()
         _edit_or_send("🚫 Action annulée, rien n'a été modifié.")
         return
 
@@ -1538,18 +1673,47 @@ def process_callback_query(cq: dict):
 
     try:
         if act == "ANNULER":
+            nom_a = (analyse.get("nom_animal") or "").strip()
+            nom_m_ana = (analyse.get("nom_maitre") or "").strip()
+            client_rec = _trouver_client_par_champs(nom_a, nom_m_ana)
+            nom_m = nom_m_ana or ((client_rec.get("nom_maitre") if client_rec else "") or "").strip()
+            tel_db = ""
+            if client_rec:
+                tel_db = client_rec.get("tel") or (client_rec.get("tels_clean") or [""])[0]
+
             payload = {
                 "action": "delete",
-                "nom_animal": analyse.get("nom_animal", ""),
+                "nom_animal": nom_a,
+                "nom_maitre": nom_m,
+                "telephone": tel_db,
                 "date": analyse.get("date", "")
             }
             resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=20).json()
             if resp.get("status") == "success":
-                _edit_or_send(f"✅ *Annulation effectuée dans Google Agenda !*\n\n🗑️ {resp.get('message', '')}")
+                tel_sms = _extraire_mobile_fr(resp.get("description", ""), tel_db)
+                date_fr, heure_fr = _formater_date_heure_fr(resp.get("start") or analyse.get("date", ""))
+                nom_a_sms = nom_a or ((client_rec.get("nom_animal") if client_rec else "") or "votre animal").strip()
+                if tel_sms:
+                    sms_txt = _construire_sms_annulation(nom_a_sms, date_fr, heure_fr)
+                    threading.Thread(target=envoyer_sms_macrodroid, args=(tel_sms, sms_txt), daemon=True).start()
+                    sms_info = f"\n📲 SMS de confirmation envoyé au client ({tel_sms})."
+                else:
+                    sms_info = "\nℹ️ Aucun mobile 06/07 trouvé pour envoyer le SMS client."
+                if chat_id:
+                    _append_history(chat_id, "assistant", f"Annulation effectuée pour {nom_a_sms}.")
+                _edit_or_send(f"✅ *Annulation effectuée dans Google Agenda !*\n\n🗑️ {resp.get('message', '')}{sms_info}")
             else:
                 _edit_or_send(f"⚠️ *Annulation non effectuée :* {resp.get('message', 'Rendez-vous introuvable')}")
 
         elif act == "DEPLACER":
+            nom_a = (analyse.get("nom_animal") or "").strip()
+            nom_m_ana = (analyse.get("nom_maitre") or "").strip()
+            client_rec = _trouver_client_par_champs(nom_a, nom_m_ana)
+            nom_m = nom_m_ana or ((client_rec.get("nom_maitre") if client_rec else "") or "").strip()
+            tel_db = ""
+            if client_rec:
+                tel_db = client_rec.get("tel") or (client_rec.get("tels_clean") or [""])[0]
+
             new_date = analyse.get("new_date", "")
             new_heure = analyse.get("new_heure", "09:00")
             dur = int(analyse.get("duree_minutes") or 60)
@@ -1557,15 +1721,37 @@ def process_callback_query(cq: dict):
             end_dt = start_dt + timedelta(minutes=dur)
             payload = {
                 "action": "move",
-                "nom_animal": analyse.get("nom_animal", ""),
+                "nom_animal": nom_a,
+                "nom_maitre": nom_m,
+                "telephone": tel_db,
                 "old_date": analyse.get("old_date", ""),
                 "new_start": start_dt.strftime("%Y-%m-%dT%H:%M:00+01:00"),
                 "new_end": end_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
             }
+            nouveau_nom = (analyse.get("nouveau_nom_animal") or "").strip()
+            if nouveau_nom or client_rec:
+                titre_nom = nouveau_nom or ((client_rec.get("nom_animal") if client_rec else "") or nom_a)
+                race_c = (client_rec.get("race") if client_rec else "") or ""
+                details = [x for x in [nom_m, race_c] if x and x not in ["Inconnu", "Non précisé", "Non précisée", "Client"]]
+                details_str = f" ({' - '.join(details)})" if details else ""
+                if titre_nom:
+                    payload["new_title"] = f"{titre_nom}{details_str}"
+
             resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=20).json()
             if resp.get("status") == "success":
-                _edit_or_send(f"✅ *Rendez-vous déplacé dans Google Agenda !*\n\n🐾 *{analyse.get('nom_animal')}* ➔ *{new_date}* à *{new_heure}*")
+                nom_affiche = nouveau_nom or nom_a
+                if chat_id:
+                    _append_history(chat_id, "assistant", f"Rendez-vous déplacé pour {nom_affiche} au {new_date} à {new_heure}.")
+                _edit_or_send(f"✅ *Rendez-vous déplacé dans Google Agenda !*\n\n🐾 *{nom_affiche}* ➔ *{new_date}* à *{new_heure}*")
             else:
+                if chat_id:
+                    if chat_id not in USER_STATES:
+                        USER_STATES[chat_id] = {"historique": [], "last_greeted_date": ""}
+                    USER_STATES[chat_id]["historique"] = [{
+                        "role": "assistant",
+                        "text": f"[Le déplacement précédent pour {nom_a or '?'} a échoué ({resp.get('message', 'introuvable')}). Ne plus relancer de déplacement sauf nouvelle demande explicite.]"
+                    }]
+                    save_states()
                 _edit_or_send(f"❌ *Déplacement impossible :* {resp.get('message', 'Erreur inconnue')}")
 
         elif act == "CORRIGER_CATEGORIE":
@@ -1668,7 +1854,7 @@ def watchdog_surveillance_boucle():
                         h_rap = dt_ev.strftime("%Hh%M")
                         msg_rap = (
                             f"Bonjour ! Petit rappel pour votre RDV demain à {h_rap} ({titre_clean}) avec Sandrine - La Canin Mobile. "
-                            f"En cas d'empêchement, vous pouvez annuler ou déplacer ici : https://canin-mobile-bot.onrender.com/reserver"
+                            f"En cas d'empêchement, vous pouvez annuler ou déplacer ici : https://canin-mobile-bot.onrender.com/reserver#annuler"
                         )
                         if envoyer_sms_macrodroid(tel_rappel, msg_rap):
                             RAPPELS_ENVOYES.add(ev_id)
