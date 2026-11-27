@@ -47,6 +47,7 @@ APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLWORFe9UaSNSlyd82Hy
 MACRODROID_WEBHOOK_URL = "https://trigger.macrodroid.com/3243d5a6-d6ff-4738-8ed1-20a2edd05a00/sms_canin"
 PORT = int(os.environ.get("PORT", 10000))
 RAPPELS_ENVOYES = set()
+ALERTES_CONFLITS_ENVOYEES = set()
 
 def envoyer_sms_macrodroid(tel: str, message: str) -> bool:
     """Envoie un SMS gratuit via MacroDroid (téléphone de Sandrine) uniquement vers un mobile 06/07."""
@@ -162,11 +163,11 @@ if os.path.exists(AGENDA_PATH):
 def get_date_du_jour_fr():
     jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
     mois = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-    now = datetime.now()
+    now = datetime.now(_get_paris_tz())
     return f"{jours[now.weekday()]} {now.day} {mois[now.month]} {now.year}"
 
 def get_semaine_calendrier_fr():
-    now = datetime.now()
+    now = datetime.now(_get_paris_tz())
     lundi = now - timedelta(days=now.weekday())
     jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
     lignes = []
@@ -648,7 +649,7 @@ def construire_planning_live_pour_ia(live_events, nb_jours: int = 21) -> str:
         if wd in [1, 2, 5]:
             sec_label = "Secteur Urrugne"
         elif wd in [3, 4]:
-            sec_label = "Secteur Cambo"
+            sec_label = "Secteur Saint-Pée-sur-Nivelle"
         else:
             sec_label = "Repos / Fermé"
 
@@ -813,15 +814,19 @@ def inscrire_dans_google_calendar(p: dict) -> dict:
         
         details_str = f" ({' - '.join(details_list)})" if details_list else ""
         title = f"{h_formatted} à {end_h_formatted}\n{prefix_auto}{nom}{details_str}"
-        
-        start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
-        end_iso = end_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
-        
+
+        tz_p = _get_paris_tz()
+        start_iso = start_dt.replace(tzinfo=tz_p).isoformat()
+        end_iso = end_dt.replace(tzinfo=tz_p).isoformat()
+
         desc = f"DÉBUT DU SOIN : {heure_str} (Fin prévue : {end_dt.strftime('%H:%M')}) - Toilettage {nom} - Catégorie {p.get('categorie', 'B')} ({duree} min) - Secteur {p.get('secteur')}"
         if p.get('nom_maitre') and p.get('nom_maitre') != 'Inconnu':
             desc += f" - Maître : {p.get('nom_maitre')}"
         if p.get('race') and p.get('race') not in ['race', 'Inconnue', 'Non précisée']:
             desc += f" - Race : {p.get('race')}"
+        tel_p = (p.get('telephone') or '').strip()
+        if tel_p:
+            desc += f" - Tél : {tel_p}"
             
         payload = {
             "title": title,
@@ -985,6 +990,8 @@ RÈGLE ABSOLUE : Dans REPONDRE, n'affirme JAMAIS avoir modifié, annulé, dépla
                         data["nom_maitre"] = client.get("nom_maitre")
                     if not data.get("race") or data.get("race") in ["race", "Non précisée", "Inconnue", ""]:
                         data["race"] = client.get("race", data.get("race"))
+                    if not data.get("telephone"):
+                        data["telephone"] = client.get("tel") or (client.get("tels_clean") or [""])[0]
 
                 # Détection explicite d'une catégorie/durée dans la phrase de Sandrine
                 txt_low = (texte or "").lower()
@@ -1470,7 +1477,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
 
                         nom_norm = _norm(nom_a).strip()
                         tel_digits = re.sub(r"\D", "", tel)
-                        paris_tz = timezone(timedelta(hours=1))
+                        paris_tz = _get_paris_tz()
                         today_d = datetime.now(paris_tz).date()
                         live_evs = obtenir_evenements_google_calendar_direct()
                         if live_evs is None:
@@ -1533,14 +1540,15 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                         det_str = f" ({' - '.join(det)})" if det else ""
                         new_title_str = f"{h_f} à {end_h_f}\n{nom_a}{det_str}"
 
+                        tz_p = _get_paris_tz()
                         move_payload = {
                             "action": "move",
                             "eventId": payload.get("existing_event_id", ""),
                             "nom_animal": nom_a,
                             "telephone": tel,
                             "old_date": payload.get("existing_date", ""),
-                            "new_start": start_dt_new.strftime("%Y-%m-%dT%H:%M:00+01:00"),
-                            "new_end": end_dt_new.strftime("%Y-%m-%dT%H:%M:00+01:00"),
+                            "new_start": start_dt_new.replace(tzinfo=tz_p).isoformat(),
+                            "new_end": end_dt_new.replace(tzinfo=tz_p).isoformat(),
                             "new_title": new_title_str
                         }
                         r_mv = requests.post(APPS_SCRIPT_URL, json=move_payload, timeout=20).json()
@@ -1870,14 +1878,15 @@ def process_callback_query(cq: dict):
             dur = int(analyse.get("duree_minutes") or 60)
             start_dt = datetime.strptime(f"{new_date} {new_heure}", "%Y-%m-%d %H:%M")
             end_dt = start_dt + timedelta(minutes=dur)
+            tz_p = _get_paris_tz()
             payload = {
                 "action": "move",
                 "nom_animal": nom_a,
                 "nom_maitre": nom_m,
                 "telephone": tel_db,
                 "old_date": analyse.get("old_date", ""),
-                "new_start": start_dt.strftime("%Y-%m-%dT%H:%M:00+01:00"),
-                "new_end": end_dt.strftime("%Y-%m-%dT%H:%M:00+01:00")
+                "new_start": start_dt.replace(tzinfo=tz_p).isoformat(),
+                "new_end": end_dt.replace(tzinfo=tz_p).isoformat()
             }
             nouveau_nom = (analyse.get("nouveau_nom_animal") or "").strip()
             if nouveau_nom or client_rec:
@@ -1955,6 +1964,48 @@ def process_callback_query(cq: dict):
         _edit_or_send(f"❌ *Erreur technique :* {e_cb}")
 
 
+def detecter_chevauchements_live(live_events: list, now_paris: datetime = None) -> list:
+    """Détecte tous les chevauchements réels (exacts ou partiels) sur les événements futurs."""
+    tz = _get_paris_tz()
+    ref_now = now_paris or datetime.now(tz)
+    parsed = []
+    for ev in (live_events or []):
+        st_iso = ev.get("start", "")
+        end_iso = ev.get("end", "")
+        if not st_iso:
+            continue
+        try:
+            dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
+            dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
+            if dt_e <= ref_now:
+                continue
+            parsed.append({
+                "id": ev.get("id") or f"{st_iso}|{ev.get('title', '')}",
+                "start": dt_s,
+                "end": dt_e,
+                "title": (ev.get("title") or "Sans titre").replace("\n", " "),
+            })
+        except Exception:
+            pass
+
+    parsed.sort(key=lambda x: x["start"])
+    chevauchements = []
+    for i in range(len(parsed)):
+        a = parsed[i]
+        for j in range(i + 1, len(parsed)):
+            b = parsed[j]
+            if b["start"] >= a["end"]:
+                break
+            key = tuple(sorted([a["id"], b["id"]]))
+            chevauchements.append({
+                "key": key,
+                "date": a["start"].strftime("%d/%m/%Y"),
+                "a": f"{a['start'].strftime('%Hh%M')}-{a['end'].strftime('%Hh%M')} {a['title']}",
+                "b": f"{b['start'].strftime('%Hh%M')}-{b['end'].strftime('%Hh%M')} {b['title']}",
+            })
+    return chevauchements
+
+
 def watchdog_surveillance_boucle():
     """Robot Sentinelle intégré : surveille l'agenda Google toutes les 5 minutes et alerte si anomalie."""
     time.sleep(30) # Laisse le temps au serveur de démarrer
@@ -1964,25 +2015,23 @@ def watchdog_surveillance_boucle():
             if not live:
                 time.sleep(300)
                 continue
-            slots = {}
-            for ev in live:
-                st = ev.get("start", "")
-                if st:
-                    slots[st] = slots.get(st, []) + [ev.get("title", "Sans titre")]
 
-            # Vérifier les doublons
-            doublons = {k: v for k, v in slots.items() if len(v) > 1}
-            if doublons:
+            paris_tz = _get_paris_tz()
+            now_paris = datetime.now(paris_tz)
+
+            # Vérifier les chevauchements exacts ou partiels (sans spammer toutes les 5 min)
+            chevauchements = detecter_chevauchements_live(live, now_paris)
+            nouveaux_conflits = [c for c in chevauchements if c["key"] not in ALERTES_CONFLITS_ENVOYEES]
+            if nouveaux_conflits:
                 msg_d = "🚨 *SENTINELLE LA CANIN MOBILE - ALERTE CONFLIT DÉTECTÉ DANS L'AGENDA !*\n\n"
-                for k, v in doublons.items():
-                    msg_d += f"📅 Heure : {k}\n🐾 Événements : {', '.join(v)}\n\n"
+                for c in nouveaux_conflits:
+                    msg_d += f"📅 *{c['date']}*\n• {c['a']}\n• {c['b']}\n\n"
+                    ALERTES_CONFLITS_ENVOYEES.add(c["key"])
                 msg_d += "👉 Intervention requise."
                 for cid in ["6022976635", "8771111289"]:
                     send_telegram_message(cid, msg_d)
 
             # Envoi automatique des rappels J-1 à 18h00 (uniquement pour les RDV pris >= 2 jours à l'avance)
-            paris_tz = timezone(timedelta(hours=1))
-            now_paris = datetime.now(paris_tz)
             if now_paris.hour == 18 and now_paris.minute < 15:
                 demain = (now_paris + timedelta(days=1)).date()
                 for ev in live:

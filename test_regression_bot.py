@@ -258,6 +258,68 @@ class TestCaninBotRegression(unittest.TestCase):
             mock_sms.assert_not_called()
             mock_save.assert_not_called()
 
+    def test_inscrire_writes_phone_and_dst_aware_iso(self):
+        captured = []
+
+        def _fake_post(url, json=None, timeout=20):
+            captured.append(json)
+            r = MagicMock()
+            r.status_code = 200
+            r.json.return_value = {"status": "success", "eventId": "ev_dst"}
+            return r
+
+        with patch.object(ws.requests, "post", side_effect=_fake_post):
+            # Hiver (UTC+1)
+            ws.inscrire_dans_google_calendar({
+                "nom_animal": "Taïko",
+                "nom_maitre": "Lorenzo",
+                "telephone": "0698799263",
+                "secteur": "Urrugne",
+                "date_proposee": "2026-12-04",
+                "heure_debut": "10:00",
+                "duree_minutes": 60,
+                "categorie": "B",
+            })
+            # Été (UTC+2)
+            ws.inscrire_dans_google_calendar({
+                "nom_animal": "Taïko",
+                "nom_maitre": "Lorenzo",
+                "telephone": "0698799263",
+                "secteur": "Urrugne",
+                "date_proposee": "2027-07-01",
+                "heure_debut": "10:00",
+                "duree_minutes": 60,
+                "categorie": "B",
+            })
+
+        self.assertIn("0698799263", captured[0]["description"])
+        self.assertTrue(captured[0]["start"].endswith("+01:00"))
+        # Sur un OS avec ZoneInfo('Europe/Paris'), l'été doit être en +02:00
+        tz_p = ws._get_paris_tz()
+        if getattr(tz_p, "key", None) == "Europe/Paris":
+            self.assertTrue(captured[1]["start"].endswith("+02:00"))
+
+    def test_live_prompt_uses_saint_pee_never_cambo(self):
+        txt = ws.construire_planning_live_pour_ia([], nb_jours=10)
+        self.assertIn("Saint-Pée-sur-Nivelle", txt)
+        self.assertNotIn("Cambo", txt)
+
+    def test_watchdog_detects_partial_overlap(self):
+        tz = timezone(timedelta(hours=1))
+        now_p = datetime(2026, 11, 27, 8, 0, tzinfo=tz)
+        overlapping_events = [
+            {"id": "e1", "start": "2026-11-27T11:00:00+01:00", "end": "2026-11-27T12:30:00+01:00", "title": "Chien A"},
+            {"id": "e2", "start": "2026-11-27T12:00:00+01:00", "end": "2026-11-27T13:00:00+01:00", "title": "Chien B"},
+        ]
+        conflits = ws.detecter_chevauchements_live(overlapping_events, now_p)
+        self.assertEqual(len(conflits), 1)
+
+        adjacent_events = [
+            {"id": "e1", "start": "2026-11-27T11:00:00+01:00", "end": "2026-11-27T12:00:00+01:00", "title": "Chien A"},
+            {"id": "e2", "start": "2026-11-27T12:00:00+01:00", "end": "2026-11-27T13:00:00+01:00", "title": "Chien B"},
+        ]
+        self.assertEqual(len(ws.detecter_chevauchements_live(adjacent_events, now_p)), 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

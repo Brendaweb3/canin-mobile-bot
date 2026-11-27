@@ -597,6 +597,8 @@
 
           // Afficher les créneaux du premier jour par défaut
           afficherCreneauxDuJour(0);
+        } else if (data.status === 'error') {
+          area.innerHTML = `<div style="text-align:center; padding:15px; color:#dc2626; font-size:13px;">${data.message || "L'agenda est temporairement inaccessible."}<br><button type="button" onclick="chargerCreneauxDisponibles()" style="margin-top:8px; padding:6px 14px; border-radius:8px; border:1px solid #dc2626; background:#fff; color:#dc2626; cursor:pointer; font-weight:600;">Réessayer</button></div>`;
         } else {
           area.innerHTML = '<div style="text-align:center; padding:15px; color:#dc2626; font-size:13px;">Toutes les tournées sont complètes sur cette période.</div>';
         }
@@ -720,6 +722,7 @@
           alert("Erreur lors de la réservation : " + (data.message || "Merci de réessayer."));
           btn.disabled = false;
           btn.innerText = 'Confirmer';
+          chargerCreneauxDisponibles();
         }
       } catch (err) {
         document.getElementById('conflict-modal').style.display = 'none';
