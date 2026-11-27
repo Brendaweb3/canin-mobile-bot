@@ -591,10 +591,15 @@ Réponds STRICTEMENT par la lettre unique A, B, C ou D sans commentaire."""
 
     return "B", 60, f"Standard {race or 'Chien'} (Cat. B - 1h)"
 
-def obtenir_evenements_google_calendar_direct() -> list:
-    """Interroge Google Apps Script en temps réel pour obtenir la liste exacte de TOUS les événements dans l'agenda."""
+def obtenir_evenements_google_calendar_direct():
+    """Interroge Google Apps Script en temps réel pour obtenir la liste exacte de TOUS les événements dans l'agenda.
+    Retourne une liste (potentiellement vide si l'agenda est vide), ou None en cas d'erreur réseau/API."""
     try:
-        url = f"{APPS_SCRIPT_URL}?start=2026-11-24T00:00:00%2B01:00&end=2027-03-01T00:00:00%2B01:00"
+        tz = _get_paris_tz()
+        now_p = datetime.now(tz)
+        start_iso = now_p.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        end_iso = (now_p + timedelta(days=95)).replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
+        url = f"{APPS_SCRIPT_URL}?start={urllib.parse.quote(start_iso)}&end={urllib.parse.quote(end_iso)}"
         resp = requests.get(url, timeout=12)
         if resp.status_code == 200:
             data = resp.json()
@@ -602,52 +607,101 @@ def obtenir_evenements_google_calendar_direct() -> list:
                 evs = data.get("events", [])
                 log(f"[CALENDAR LIVE] {len(evs)} événements récupérés en temps réel depuis Google Agenda.")
                 return evs
+            log(f"[CALENDAR LIVE WARN] Réponse non-success : {data}")
+        else:
+            log(f"[CALENDAR LIVE HTTP {resp.status_code}]")
     except Exception as e:
         log(f"[CALENDAR LIVE FETCH NOTE] : {e}")
-    return []
+    return None
 
-def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: str = 'B') -> tuple:
-    appts = load_all_appointments()
-    
-    # 1. Récupération en direct des événements réels de Google Agenda avec conversion fuseau horaire Europe/Paris (UTC+1)
-    paris_tz = timezone(timedelta(hours=1))
-    live_events = obtenir_evenements_google_calendar_direct()
+
+def construire_planning_live_pour_ia(live_events, nb_jours: int = 21) -> str:
+    """Construit un résumé textuel exact de Google Agenda pour le prompt Gemini (zéro donnée statique)."""
+    if live_events is None:
+        return (
+            "⚠️ GOOGLE AGENDA TEMPORAIREMENT INACCESSIBLE : "
+            "Ne propose AUCUN créneau libre, n'invente aucune disponibilité et demande à Sandrine de réessayer dans quelques secondes."
+        )
+
+    tz = _get_paris_tz()
+    now_p = datetime.now(tz)
+    events_par_jour = {}
     for lev in live_events:
         st_iso = lev.get("start", "")
         end_iso = lev.get("end", "")
-        if st_iso:
-            try:
-                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(paris_tz)
-                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(paris_tz)
-                d_part = dt_s.strftime("%Y-%m-%d")
-                h_clean = dt_s.strftime("%H:%M")
-                dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
-                appts.append({
-                    "date": d_part,
-                    "time": f"{h_clean}:00",
-                    "duration": dur_calc,
-                    "title": lev.get("title", ""),
-                    "description": f"Événement réel Google Agenda : {lev.get('title', '')}"
-                })
-            except Exception as e_parse:
-                log(f"[PARSE ERR] : {e_parse}")
+        if not st_iso:
+            continue
+        try:
+            dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
+            dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
+            d_key = dt_s.strftime("%Y-%m-%d")
+            events_par_jour.setdefault(d_key, []).append((dt_s, dt_e, lev.get("title", "RDV")))
+        except Exception:
+            pass
+
+    jours_fr = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+    lignes = ["ÉTAT RÉEL EN DIRECT DE GOOGLE AGENDA CANINS MOBILE (source unique de vérité) :"]
+    for i in range(nb_jours):
+        d = now_p.date() + timedelta(days=i)
+        d_key = d.strftime("%Y-%m-%d")
+        wd = d.weekday()
+        if wd in [1, 2, 5]:
+            sec_label = "Secteur Urrugne"
+        elif wd in [3, 4]:
+            sec_label = "Secteur Cambo"
+        else:
+            sec_label = "Repos / Fermé"
+
+        evs = sorted(events_par_jour.get(d_key, []), key=lambda x: x[0])
+        header = f"- {jours_fr[wd]} {d.strftime('%d/%m/%Y')} ({d_key}) [{sec_label}] :"
+        if not evs:
+            lignes.append(f"{header} Aucun RDV inscrit dans Google Agenda.")
+        else:
+            details = ", ".join(f"{s.strftime('%Hh%M')}-{e.strftime('%Hh%M')} {t}" for s, e, t in evs)
+            lignes.append(f"{header} {details}")
+    return "\n".join(lignes)
+
+
+def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: str = 'B') -> tuple:
+    tz = _get_paris_tz()
+    now_paris = datetime.now(tz)
+    live_events = obtenir_evenements_google_calendar_direct()
+
+    if live_events is None:
+        # Fallback uniquement si Google Agenda est inaccessible
+        appts = load_all_appointments()
+    else:
+        appts = []
+        for lev in live_events:
+            st_iso = lev.get("start", "")
+            end_iso = lev.get("end", "")
+            if st_iso:
+                try:
+                    dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
+                    dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
+                    d_part = dt_s.strftime("%Y-%m-%d")
+                    h_clean = dt_s.strftime("%H:%M")
+                    dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
+                    titre = lev.get("title", "")
+                    desc_raw = lev.get("description", "")
+                    appts.append({
+                        "date": d_part,
+                        "time": f"{h_clean}:00",
+                        "duration": dur_calc,
+                        "title": titre,
+                        "description": f"{titre} | {desc_raw}"
+                    })
+                except Exception as e_parse:
+                    log(f"[PARSE ERR] : {e_parse}")
 
     valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
 
-    # Début dès le retour de Sandrine : Mardi 24 Novembre 2026
-    cur_date = datetime(2026, 11, 24)
-    end_date = datetime(2027, 2, 28)
+    cur_date = now_paris.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+    end_date = cur_date + timedelta(days=95)
+    now_min = now_paris.hour * 60 + now_paris.minute
 
     while cur_date <= end_date:
         if cur_date.weekday() in valid_weekdays:
-            # BLOCAGE DE SÉCURITÉ : Mardi 24 et Jeudi 26 Novembre fermés aux nouvelles réservations
-            if cur_date.strftime("%Y-%m-%d") in ["2026-11-24", "2026-11-26"]:
-                cur_date += timedelta(days=1)
-                continue
-            # BLOCAGE DE SÉCURITÉ : Mardi 24 et Jeudi 26 Novembre fermés aux nouvelles réservations
-            if cur_date.strftime("%Y-%m-%d") in ["2026-11-24", "2026-11-26"]:
-                cur_date += timedelta(days=1)
-                continue
             date_str = cur_date.strftime("%Y-%m-%d")
             day_appts = [a for a in appts if a.get("date") == date_str]
 
@@ -697,6 +751,8 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
             # Après-midi : Début à 14h00 (840 min), FIN STRICTE DU DERNIER SOIN À 18h00 (1080 min)
             possible_starts = [540, 570, 600, 630, 660, 690, 720, 750, 840, 870, 900, 930, 960, 990, 1020, 1050]
             for s in possible_starts:
+                if cur_date.date() == now_paris.date() and s <= now_min + 30:
+                    continue
                 e = s + duree_minutes
                 
                 # Respect des créneaux attribués aux clients web :
@@ -731,7 +787,7 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
         cur_date += timedelta(days=1)
     return None, None, None
 
-def inscrire_dans_google_calendar(p: dict) -> bool:
+def inscrire_dans_google_calendar(p: dict) -> dict:
     try:
         date_str = p.get('date_proposee')
         heure_str = p.get('heure_debut', '09:00')
@@ -781,18 +837,24 @@ def inscrire_dans_google_calendar(p: dict) -> bool:
             res_json = resp.json()
             if res_json.get("status") == "success":
                 log(f"[CALENDAR OK] Rendez-vous Google Calendar inscrit : {res_json.get('eventId')}")
-                return True
+                return {"ok": True, "status": "success", "eventId": res_json.get("eventId", ""), "message": res_json.get("message", "")}
             elif res_json.get("status") == "conflict":
-                log(f"[CALENDAR CONFLICT] Créneau refusé (déjà pris) : {res_json.get('message')}")
-                return False
+                msg_c = res_json.get("message", "Créneau déjà pris dans Google Agenda.")
+                log(f"[CALENDAR CONFLICT] Créneau refusé (déjà pris) : {msg_c}")
+                return {"ok": False, "status": "conflict", "message": msg_c}
+            return {"ok": False, "status": res_json.get("status", "error"), "message": res_json.get("message", "Erreur Google Agenda.")}
         log(f"[CALENDAR ERROR] {resp.status_code} {resp.text}")
+        return {"ok": False, "status": "http_error", "message": f"Erreur HTTP {resp.status_code}"}
     except Exception as e:
         log(f"[CALENDAR EXCEPTION] : {e}")
-    return False
+        return {"ok": False, "status": "exception", "message": str(e)}
 
-def traiter_instruction_avec_memoire(texte: str, historique: list, client: dict = None) -> dict:
+def traiter_instruction_avec_memoire(texte: str, historique: list, client: dict = None, live_events=None) -> dict:
     date_du_jour = get_date_du_jour_fr()
     calendrier_semaine = get_semaine_calendrier_fr()
+    if live_events is None:
+        live_events = obtenir_evenements_google_calendar_direct()
+    planning_live_text = construire_planning_live_pour_ia(live_events, nb_jours=21)
     
     hist_text = ""
     if historique:
@@ -825,10 +887,11 @@ RÈGLES D'OR DE COMPORTEMENT (INVIOLABLES) :
 {infos_c}
 {hist_text}
 
-PLANNING MASTER DE RÉFÉRENCE DE SANDRINE :
+887: PLANNING EN DIRECT DE GOOGLE AGENDA (21 PROCHAINS JOURS — NE JAMAIS INVENTER DE CRÉNEAU LIBRE) :
 \"\"\"
-{AGENDA_TEXT}
+{planning_live_text}
 \"\"\"
+RÈGLE ABSOLUE SUR LES DISPONIBILITÉS : Pour connaître les créneaux libres ou occupés d'un jour donné, utilise EXCLUSIVEMENT l'état réel ci-dessus. Un créneau où figure déjà un rendez-vous est OCCUPÉ. Ne propose JAMAIS un créneau déjà pris ou une plage libre imaginaire.
 
 Dernière phrase de Sandrine : "{texte}"
 
@@ -922,16 +985,44 @@ RÈGLE ABSOLUE : Dans REPONDRE, n'affirme JAMAIS avoir modifié, annulé, dépla
                         data["nom_maitre"] = client.get("nom_maitre")
                     if not data.get("race") or data.get("race") in ["race", "Non précisée", "Inconnue", ""]:
                         data["race"] = client.get("race", data.get("race"))
-                    if not data.get("categorie"):
+
+                # Détection explicite d'une catégorie/durée dans la phrase de Sandrine
+                txt_low = (texte or "").lower()
+                cat_explicite = bool(re.search(r'\bcat(?:égorie|\.)?\s*[abcd]\b|\b(?:30|90|120)\s*min\b|\b1h30\b|\b2h\b', txt_low))
+
+                # Application prioritaire de CATEGORY_OVERRIDES + règles métier (ex: Falco -> Cat. B)
+                nom_eff = data.get("nom_animal", "")
+                race_eff = data.get("race", "")
+                cat_auto, dur_auto, src_auto = qualifier_categorie_animal(
+                    nom_animal=nom_eff,
+                    race=race_eff,
+                    espece="Chien"
+                )
+                if "Correction manuelle" in src_auto or not cat_explicite:
+                    if "Correction manuelle" in src_auto:
+                        data["categorie"] = cat_auto
+                        data["duree_minutes"] = dur_auto
+                    elif not data.get("categorie") or src_auto != "Catégorie par défaut":
+                        data["categorie"] = cat_auto
+                        data["duree_minutes"] = dur_auto
+                    elif client and client.get("cat"):
                         data["categorie"] = client.get("cat", "B")
-                    cat_u = data.get("categorie", "B").upper()
-                    if cat_u == "A": data["duree_minutes"] = 30
-                    elif cat_u == "C": data["duree_minutes"] = 90
-                    elif cat_u == "D": data["duree_minutes"] = 120
-                    else: data["duree_minutes"] = 60
-                    
+
+                cat_u = (data.get("categorie") or "B").upper()
+                data["categorie"] = cat_u
+                data["duree_minutes"] = _duree_par_cat(cat_u)
+
                 if data.get("date_proposee"):
                     data["secteur"] = deduire_secteur_par_date(data["date_proposee"])
+
+            elif data.get("action") == "CREER_CLIENT":
+                if not data.get("categorie"):
+                    cat_auto, _, _ = qualifier_categorie_animal(
+                        nom_animal=data.get("nom_animal", ""),
+                        race=data.get("race", ""),
+                        espece="Chien"
+                    )
+                    data["categorie"] = cat_auto
                     
             return data
     except Exception as e:
@@ -1015,7 +1106,14 @@ def process_message(msg):
         # 2. Action : Inscrire directement dans l'agenda
         if action == "INSCRIRE":
             candidats = trouver_clients_candidats(texte)
-            if len(candidats) > 1:
+            nom_a_analyse = (analyse.get("nom_animal") or "").strip().lower()
+            nom_m_analyse = (analyse.get("nom_maitre") or "").strip().lower()
+            deja_desambigue = any(
+                (c.get("nom_animal") or "").strip().lower() == nom_a_analyse
+                and (not nom_m_analyse or nom_m_analyse in ["inconnu", "non précisé", "client"] or (c.get("nom_maitre") or "").strip().lower() == nom_m_analyse)
+                for c in candidats
+            )
+            if len(candidats) > 1 and not deja_desambigue:
                 liste_txt = "\n".join(
                     f"• *{c.get('nom_animal')}* ({c.get('race', '?')} - Cat. {c.get('cat', 'B')}) — *{c.get('nom_maitre')}* (`{c.get('tel') or 'sans tél'}`)"
                     for c in candidats[:5]
@@ -1039,15 +1137,31 @@ def process_message(msg):
             sec = analyse.get("secteur", "Urrugne")
             maitre = analyse.get("nom_maitre", "")
             rep_phrase = analyse.get("message_reponse", "C'est noté.")
-            
+
             send_telegram_message(chat_id, "📅 _Inscription immédiate dans ton agenda Google CANINS MOBILE..._")
             analyse["source"] = "telegram"
-            succes = inscrire_dans_google_calendar(analyse)
-            status_agenda = "🎉 *👉 Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*" if succes else "⚠️ *Enregistré localement, synchronisation en attente.*"
-            
+            res_gcal = inscrire_dans_google_calendar(analyse)
+
+            if not res_gcal.get("ok"):
+                motif = res_gcal.get("message", "Créneau déjà occupé ou erreur Google Agenda.")
+                d_alt, h_alt, _ = trouver_premier_creneau_disponible(sec, dur, cat)
+                alt_txt = f"\n\n💡 *Prochain créneau libre réel ({sec}) :* *{d_alt}* à *{h_alt}*" if d_alt and h_alt else ""
+                msg_err = (
+                    f"{salutation}{vocal_tag}❌ *IMPOSSIBLE D'INSCRIRE CE RENDEZ-VOUS DANS GOOGLE AGENDA !*\n\n"
+                    f"🐾 *Animal* : *{animal}* | 📅 *{date_p}* à *{h}*\n"
+                    f"⚠️ *Motif* : {motif}{alt_txt}\n\n"
+                    f"👉 Aucune modification n'a été faite dans ton Google Agenda."
+                )
+                USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": f"Échec inscription pour {animal} le {date_p} à {h} : {motif}"})
+                save_states()
+                send_telegram_message(chat_id, msg_err)
+                return
+
+            status_agenda = "🎉 *👉 Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*"
+
             maitre_str = f"\n👤 *Client* : {maitre}" if maitre and maitre != "Inconnu" else ""
             race_str = f" ({race})" if race and race not in ["race", "Inconnue", "Non précisée"] else ""
-            
+
             msg_conf = f"""{salutation}{vocal_tag}✅ *RENDEZ-VOUS ENREGISTRÉ DANS TON AGENDA !*
 
 🐾 *Animal* : *{animal}*{race_str}{maitre_str}
@@ -1059,7 +1173,7 @@ def process_message(msg):
 💬 « _{rep_phrase}_ »
 
 {status_agenda}"""
-            
+
             USER_STATES[chat_id]["historique"].append({"role": "assistant", "text": f"Rendez-vous inscrit pour {animal} le {date_p} à {h}"})
             save_states()
             send_telegram_message(chat_id, msg_conf)
@@ -1125,30 +1239,38 @@ def process_message(msg):
 
 def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat: str = 'B', max_jours: int = 14) -> list:
     """Calcule tous les créneaux réels disponibles par jour pour l'affichage calendrier."""
-    appts = load_all_appointments()
-    paris_tz = timezone(timedelta(hours=1))
+    tz = _get_paris_tz()
+    now_paris = datetime.now(tz)
     live_events = obtenir_evenements_google_calendar_direct()
-    for lev in live_events:
-        st_iso = lev.get("start", "")
-        end_iso = lev.get("end", "")
-        if st_iso:
-            try:
-                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(paris_tz)
-                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(paris_tz)
-                dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
-                appts.append({
-                    "date": dt_s.strftime("%Y-%m-%d"),
-                    "time": dt_s.strftime("%H:%M:00"),
-                    "duration": dur_calc,
-                    "title": lev.get("title", ""),
-                    "description": f"Événement réel Google Agenda : {lev.get('title', '')}"
-                })
-            except Exception:
-                pass
+
+    if live_events is None:
+        appts = load_all_appointments()
+    else:
+        appts = []
+        for lev in live_events:
+            st_iso = lev.get("start", "")
+            end_iso = lev.get("end", "")
+            if st_iso:
+                try:
+                    dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
+                    dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
+                    dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
+                    titre = lev.get("title", "")
+                    desc_raw = lev.get("description", "")
+                    appts.append({
+                        "date": dt_s.strftime("%Y-%m-%d"),
+                        "time": dt_s.strftime("%H:%M:00"),
+                        "duration": dur_calc,
+                        "title": titre,
+                        "description": f"{titre} | {desc_raw}"
+                    })
+                except Exception:
+                    pass
 
     valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
-    cur_date = datetime(2026, 11, 24)
-    end_date = datetime(2027, 2, 28)
+    cur_date = now_paris.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+    end_date = cur_date + timedelta(days=95)
+    now_min = now_paris.hour * 60 + now_paris.minute
 
     resultats = []
     jours_courts = ["Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Dim."]
@@ -1156,14 +1278,6 @@ def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat:
 
     while cur_date <= end_date and len(resultats) < max_jours:
         if cur_date.weekday() in valid_weekdays:
-            # BLOCAGE DE SÉCURITÉ : Mardi 24 et Jeudi 26 Novembre fermés aux nouvelles réservations
-            if cur_date.strftime("%Y-%m-%d") in ["2026-11-24", "2026-11-26"]:
-                cur_date += timedelta(days=1)
-                continue
-            # BLOCAGE DE SÉCURITÉ : Mardi 24 et Jeudi 26 Novembre fermés aux nouvelles réservations
-            if cur_date.strftime("%Y-%m-%d") in ["2026-11-24", "2026-11-26"]:
-                cur_date += timedelta(days=1)
-                continue
             date_str = cur_date.strftime("%Y-%m-%d")
             day_appts = [a for a in appts if a.get("date") == date_str]
 
@@ -1187,6 +1301,8 @@ def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat:
 
                 creneaux_jour = []
                 for s in [540, 570, 600, 630, 660, 690, 720, 750, 840, 870, 900, 930, 960, 990, 1020, 1050]:
+                    if cur_date.date() == now_paris.date() and s <= now_min + 30:
+                        continue
                     e = s + duree_minutes
                     is_matin = (s >= 540 and e <= 780)
                     is_aprem = (s >= 840 and e <= 1080)
@@ -1225,6 +1341,18 @@ def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat:
 
 class WebhookHTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "status": "ok",
+                "clients_db": len(CLIENTS_DB),
+                "category_overrides": len(CATEGORY_OVERRIDES),
+                "pending_actions": len(PENDING_ACTIONS)
+            }).encode("utf-8"))
+            return
+
         if self.path == "/logs":
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -1445,8 +1573,19 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     }
 
                     # Inscription en direct dans Google Calendar
-                    succes = inscrire_dans_google_calendar(booking_payload)
-                    if succes and tel:
+                    res_gcal = inscrire_dans_google_calendar(booking_payload)
+                    succes = bool(res_gcal.get("ok"))
+                    if not succes:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "status": "error",
+                            "message": res_gcal.get("message", "Ce créneau vient d'être pris dans l'agenda. Merci d'en choisir un autre.")
+                        }, ensure_ascii=False).encode("utf-8"))
+                        return
+
+                    if tel:
                         sms_conf = (
                             f"Bonjour ! Votre RDV pour {nom_a} est confirmé le {date_fr_label} à {heure_str.replace(':', 'h')} "
                             f"({lieu_exact}, {sec}). Pensez à prévenir 24h avant en cas d'empêchement. Sandrine - La Canin Mobile"
@@ -1786,6 +1925,8 @@ def process_callback_query(cq: dict):
             if resp.get("status") == "success":
                 if isinstance(resp.get("client"), dict):
                     CLIENTS_DB.append(resp["client"])
+                charger_overrides_categories(force=True)
+                _append_history(chat_id, "assistant", f"Fiche client créée : {payload['nom_maitre']} / {payload['nom_animal']} (Cat. {payload['categorie']}).")
                 sheet_info = f"\n📊 [Ouvrir le tableau Google Sheet]({resp['sheet_url']})" if resp.get("sheet_url") else ""
                 _edit_or_send(f"✅ *Nouveau client enregistré dans la base !*\n\n👤 {resp.get('message', '')}{sheet_info}")
                 send_telegram_vcf(
@@ -1808,6 +1949,9 @@ def watchdog_surveillance_boucle():
     while True:
         try:
             live = obtenir_evenements_google_calendar_direct()
+            if not live:
+                time.sleep(300)
+                continue
             slots = {}
             for ev in live:
                 st = ev.get("start", "")
@@ -1867,6 +2011,7 @@ def watchdog_surveillance_boucle():
         time.sleep(300) # Re-contrôle toutes les 5 minutes
 
 def run_server():
+    charger_overrides_categories(force=True)
     server_address = ("", PORT)
     httpd = HTTPServer(server_address, WebhookHTTPHandler)
     # Lancement du Robot Sentinelle en tâche de fond permanente
