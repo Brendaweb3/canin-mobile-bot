@@ -289,6 +289,7 @@ function doGet(e) {
           end: ev.getEndTime().toISOString(),
           allDay: ev.isAllDayEvent(),
           calendarName: entry.name,
+          color: (ev.getColor() || "").toString(),
           created: ev.getDateCreated() ? ev.getDateCreated().toISOString() : "",
           description: ev.getDescription() || ""
         });
