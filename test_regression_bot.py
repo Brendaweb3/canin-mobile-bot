@@ -320,6 +320,58 @@ class TestCaninBotRegression(unittest.TestCase):
         ]
         self.assertEqual(len(ws.detecter_chevauchements_live(adjacent_events, now_p)), 0)
 
+    def test_obtenir_evenements_google_calendar_direct_builds_valid_url(self):
+        called_urls = []
+
+        def _fake_get(url, timeout=12):
+            called_urls.append(url)
+            r = MagicMock()
+            r.status_code = 200
+            r.json.return_value = {"status": "success", "events": [{"id": "1"}]}
+            return r
+
+        with patch.object(ws.requests, "get", side_effect=_fake_get):
+            evs = ws.obtenir_evenements_google_calendar_direct()
+        self.assertEqual(evs, [{"id": "1"}])
+        self.assertEqual(len(called_urls), 1)
+        self.assertIn("start=", called_urls[0])
+        self.assertIn("end=", called_urls[0])
+
+        err_resp = MagicMock()
+        err_resp.status_code = 500
+        with patch.object(ws.requests, "get", return_value=err_resp):
+            self.assertIsNone(ws.obtenir_evenements_google_calendar_direct())
+
+    def test_no_undefined_symbols_in_webhook_server(self):
+        import ast
+        import builtins
+        import os
+        path = os.path.join(os.path.dirname(__file__), "webhook_server.py")
+        with open(path, encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+        defined = set(dir(builtins)) | {"__file__", "__name__"}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.add(node.name)
+            elif isinstance(node, ast.Import):
+                for a in node.names:
+                    defined.add((a.asname or a.name).split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for a in node.names:
+                    defined.add(a.asname or a.name)
+            elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                defined.add(node.id)
+            elif isinstance(node, ast.arg):
+                defined.add(node.arg)
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                defined.add(node.name)
+        undefined = [
+            (node.lineno, node.id)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id not in defined
+        ]
+        self.assertEqual(undefined, [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

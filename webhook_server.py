@@ -14,6 +14,7 @@ import re
 import base64
 import requests
 import threading
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
