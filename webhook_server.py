@@ -1659,7 +1659,8 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     lieu_exact = "Maison des Associations (Kixoenea)" if "urrugne" in sec.lower() else "À côté du Garage Renault"
                     sms_txt = (
                         f"Bonjour ! Votre RDV pour {nom_a} est confirmé le {date_fr or date_p} à {heure_fr or heure.replace(':', 'h')} "
-                        f"({lieu_exact}, {sec}). Pensez à prévenir 24h avant en cas d'empêchement. Sandrine - La Canin Mobile"
+                        f"({lieu_exact}, {sec}). Un contretemps ? Prévenir 24h avant en un clic libère la place pour un autre animal et nous permet de vous replacer sereinement : "
+                        f"https://canin-mobile-bot.onrender.com/reserver#annuler — Sandrine, La Canin Mobile"
                     )
                     threading.Thread(target=envoyer_sms_macrodroid, args=(tel, sms_txt), daemon=True).start()
 
@@ -1963,7 +1964,8 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     if tel:
                         sms_conf = (
                             f"Bonjour ! Votre RDV pour {nom_a} est confirmé le {date_fr_label} à {heure_str.replace(':', 'h')} "
-                            f"({lieu_exact}, {sec}). Pensez à prévenir 24h avant en cas d'empêchement. Sandrine - La Canin Mobile"
+                            f"({lieu_exact}, {sec}). Un contretemps ? Prévenir 24h avant en un clic libère la place pour un autre animal et nous permet de vous replacer sereinement : "
+                            f"https://canin-mobile-bot.onrender.com/reserver#annuler — Sandrine, La Canin Mobile"
                         )
                         threading.Thread(target=envoyer_sms_macrodroid, args=(tel, sms_conf), daemon=True).start()
 
