@@ -205,6 +205,59 @@ class TestCaninBotRegression(unittest.TestCase):
             self.assertEqual((cat_ov, dur_ov), ("B", 60))
             self.assertIn("Correction manuelle", src_ov)
 
+    def test_creneaux_returns_none_when_calendar_unreachable(self):
+        with patch.object(ws, "obtenir_evenements_google_calendar_direct", return_value=None), \
+             patch.object(ws, "load_all_appointments") as mock_load:
+            self.assertIsNone(ws.obtenir_tous_les_creneaux_disponibles("Urrugne", 60, "B"))
+            self.assertEqual(ws.trouver_premier_creneau_disponible("Urrugne", 60, "B"), (None, None, None))
+            mock_load.assert_not_called()
+
+    def test_api_reserver_never_confirms_on_calendar_conflict_or_outage(self):
+        import io
+        body = json.dumps({
+            "nom_animal": "Taïko",
+            "nom_maitre": "Lorenzo",
+            "telephone": "0698799263",
+            "secteur": "Urrugne",
+            "espece": "Chien",
+            "race": "Berger Australien",
+            "date_choisie": "2026-11-27",
+            "heure_choisie": "12:00",
+        }).encode("utf-8")
+
+        def _invoke_reserver():
+            handler = object.__new__(ws.WebhookHTTPHandler)
+            handler.path = "/api/reserver"
+            handler.headers = {"Content-Length": str(len(body))}
+            handler.rfile = io.BytesIO(body)
+            handler.wfile = io.BytesIO()
+            status_codes = []
+            handler.send_response = lambda code: status_codes.append(code)
+            handler.send_header = lambda k, v: None
+            handler.end_headers = lambda: None
+            handler.do_POST()
+            resp_json = json.loads(handler.wfile.getvalue().decode("utf-8"))
+            return status_codes[0], resp_json
+
+        # Cas 1 : Google Agenda inaccessible -> HTTP 503 + status error (pas de crash NoneType)
+        with patch.object(ws, "charger_overrides_categories", return_value={}), \
+             patch.object(ws, "obtenir_evenements_google_calendar_direct", return_value=None):
+            code, resp = _invoke_reserver()
+            self.assertEqual(code, 503)
+            self.assertEqual(resp["status"], "error")
+
+        # Cas 2 : Conflit Google Calendar -> jamais status success, pas de SMS ni d'écriture locale
+        with patch.object(ws, "charger_overrides_categories", return_value={}), \
+             patch.object(ws, "obtenir_evenements_google_calendar_direct", return_value=[]), \
+             patch.object(ws, "inscrire_dans_google_calendar", return_value={"ok": False, "status": "conflict", "message": "Créneau déjà occupé"}), \
+             patch.object(ws, "envoyer_sms_macrodroid") as mock_sms, \
+             patch.object(ws, "save_all_appointments") as mock_save:
+            code, resp = _invoke_reserver()
+            self.assertEqual(code, 200)
+            self.assertEqual(resp["status"], "error")
+            mock_sms.assert_not_called()
+            mock_save.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

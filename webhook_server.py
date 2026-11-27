@@ -668,31 +668,31 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
     live_events = obtenir_evenements_google_calendar_direct()
 
     if live_events is None:
-        # Fallback uniquement si Google Agenda est inaccessible
-        appts = load_all_appointments()
-    else:
-        appts = []
-        for lev in live_events:
-            st_iso = lev.get("start", "")
-            end_iso = lev.get("end", "")
-            if st_iso:
-                try:
-                    dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
-                    dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
-                    d_part = dt_s.strftime("%Y-%m-%d")
-                    h_clean = dt_s.strftime("%H:%M")
-                    dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
-                    titre = lev.get("title", "")
-                    desc_raw = lev.get("description", "")
-                    appts.append({
-                        "date": d_part,
-                        "time": f"{h_clean}:00",
-                        "duration": dur_calc,
-                        "title": titre,
-                        "description": f"{titre} | {desc_raw}"
-                    })
-                except Exception as e_parse:
-                    log(f"[PARSE ERR] : {e_parse}")
+        log("[CALENDAR UNAVAILABLE] Impossible de calculer un créneau sans Google Agenda en direct.")
+        return None, None, None
+
+    appts = []
+    for lev in live_events:
+        st_iso = lev.get("start", "")
+        end_iso = lev.get("end", "")
+        if st_iso:
+            try:
+                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
+                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
+                d_part = dt_s.strftime("%Y-%m-%d")
+                h_clean = dt_s.strftime("%H:%M")
+                dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
+                titre = lev.get("title", "")
+                desc_raw = lev.get("description", "")
+                appts.append({
+                    "date": d_part,
+                    "time": f"{h_clean}:00",
+                    "duration": dur_calc,
+                    "title": titre,
+                    "description": f"{titre} | {desc_raw}"
+                })
+            except Exception as e_parse:
+                log(f"[PARSE ERR] : {e_parse}")
 
     valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
 
@@ -1244,28 +1244,29 @@ def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat:
     live_events = obtenir_evenements_google_calendar_direct()
 
     if live_events is None:
-        appts = load_all_appointments()
-    else:
-        appts = []
-        for lev in live_events:
-            st_iso = lev.get("start", "")
-            end_iso = lev.get("end", "")
-            if st_iso:
-                try:
-                    dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
-                    dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
-                    dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
-                    titre = lev.get("title", "")
-                    desc_raw = lev.get("description", "")
-                    appts.append({
-                        "date": dt_s.strftime("%Y-%m-%d"),
-                        "time": dt_s.strftime("%H:%M:00"),
-                        "duration": dur_calc,
-                        "title": titre,
-                        "description": f"{titre} | {desc_raw}"
-                    })
-                except Exception:
-                    pass
+        log("[CALENDAR UNAVAILABLE] Impossible de lister les créneaux sans Google Agenda en direct.")
+        return None
+
+    appts = []
+    for lev in live_events:
+        st_iso = lev.get("start", "")
+        end_iso = lev.get("end", "")
+        if st_iso:
+            try:
+                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
+                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
+                dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
+                titre = lev.get("title", "")
+                desc_raw = lev.get("description", "")
+                appts.append({
+                    "date": dt_s.strftime("%Y-%m-%d"),
+                    "time": dt_s.strftime("%H:%M:00"),
+                    "duration": dur_calc,
+                    "title": titre,
+                    "description": f"{titre} | {desc_raw}"
+                })
+            except Exception:
+                pass
 
     valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
     cur_date = now_paris.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
@@ -1396,6 +1397,15 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
 
                     cat, dur, _ = qualifier_categorie_animal(nom_a, esp, race)
                     dispos = obtenir_tous_les_creneaux_disponibles(sec, dur, cat, max_jours=10)
+                    if dispos is None:
+                        self.send_response(503)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "status": "error",
+                            "message": "L'agenda Google est temporairement inaccessible. Merci de réessayer dans quelques secondes."
+                        }, ensure_ascii=False).encode("utf-8"))
+                        return
 
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -1439,9 +1449,14 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     else:
                         date_str, heure_str, dt_obj = trouver_premier_creneau_disponible(sec, dur, cat)
                         if not date_str:
-                            date_str = "2026-11-24" if "urrugne" in sec.lower() else "2026-11-26"
-                            heure_str = "09:00"
-                            dt_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                            self.send_response(503)
+                            self.send_header("Content-Type", "application/json; charset=utf-8")
+                            self.end_headers()
+                            self.wfile.write(json.dumps({
+                                "status": "error",
+                                "message": "Agenda temporairement inaccessible ou aucun créneau disponible. Merci de réessayer dans quelques secondes."
+                            }, ensure_ascii=False).encode("utf-8"))
+                            return
 
                     date_fr_label = date_vers_texte_fr(dt_obj)
                     lieu_exact = "Maison des Associations (Kixoenea)" if "urrugne" in sec.lower() else "À côté du Garage Renault"
@@ -1458,6 +1473,15 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                         paris_tz = timezone(timedelta(hours=1))
                         today_d = datetime.now(paris_tz).date()
                         live_evs = obtenir_evenements_google_calendar_direct()
+                        if live_evs is None:
+                            self.send_response(503)
+                            self.send_header("Content-Type", "application/json; charset=utf-8")
+                            self.end_headers()
+                            self.wfile.write(json.dumps({
+                                "status": "error",
+                                "message": "Impossible de vérifier l'agenda Google en direct. Merci de réessayer dans quelques secondes."
+                            }, ensure_ascii=False).encode("utf-8"))
+                            return
 
                         for lev in live_evs:
                             st_iso = lev.get("start", "")
@@ -1592,19 +1616,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                         )
                         threading.Thread(target=envoyer_sms_macrodroid, args=(tel, sms_conf), daemon=True).start()
 
-                    # 4. Enregistrement local pour verrouiller le créneau immédiatement
-                    appts = load_all_appointments()
-                    appts.append({
-                        "date": date_str,
-                        "time": f"{heure_str}:00",
-                        "duration": dur,
-                        "title": f"{nom_a} ({nom_m})",
-                        "description": f"Toilettage {nom_a} - Cat. {cat} ({dur} min) - Tél: {tel} - Maître: {nom_m} - Secteur: {sec}",
-                        "location": f"{sec} - {lieu_exact}"
-                    })
-                    save_all_appointments(appts)
-
-                    # 5. Notification Telegram instantanée à Sandrine & Bernadette
+                    # 4. Notification Telegram instantanée à Sandrine & Bernadette (Google Agenda est la source unique de vérité)
                     alert = f"""✅ *NOUVEAU RENDEZ-VOUS FERME ATTRIBUÉ & CONFIRMÉ* !
 
 🐾 *Animal* : *{nom_a}* ({esp} - {race})
@@ -1614,7 +1626,7 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
 👤 *Propriétaire* : *{nom_m}*
 📞 *Téléphone* : `{tel}`
 
-{"🎉 👉 *Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*" if succes else "⚠️ *Enregistré dans le planning, synchronisation agenda en attente.*"}"""
+🎉 👉 *Inscrit automatiquement dans ton Google Agenda CANINS MOBILE !*"""
 
                     for cid in ["6022976635", "8771111289"]:
                         send_telegram_message(cid, alert)
