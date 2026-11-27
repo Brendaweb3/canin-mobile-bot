@@ -372,6 +372,146 @@ class TestCaninBotRegression(unittest.TestCase):
         ]
         self.assertEqual(undefined, [])
 
+    def test_berger_australien_clients_db_cleaned(self):
+        import os
+        db_path = os.path.join(os.path.dirname(__file__), "clients_db.json")
+        with open(db_path, encoding="utf-8") as f:
+            db = json.load(f)
+        ba = [c for c in db if "australien" in (c.get("race") or "").lower()]
+        self.assertEqual(len(ba), 21)
+        by_id = {c["id"]: c for c in ba}
+        self.assertEqual(by_id["CANIN-0302"]["cat"], "B")
+        self.assertEqual(by_id["CANIN-0583"]["cat"], "B")
+        self.assertEqual(by_id["CANIN-0254"]["cat"], "D")
+        cats_c = [c for c in ba if c["cat"] == "C"]
+        self.assertEqual(len(cats_c), 18)
+
+    def test_qualifier_reads_live_clients_db_and_phone(self):
+        orig_db = list(ws.CLIENTS_DB)
+        try:
+            ws.CATEGORY_OVERRIDES.clear()
+            ws.CLIENTS_DB.append({
+                "id": "CANIN-TEST-999",
+                "nom_maitre": "ClientTestPro",
+                "nom_animal": "ZorroTest999",
+                "espece": "Chien",
+                "race": "Yorkshire",
+                "cat": "C",
+                "duree": "1h30",
+                "tel": "06 99 88 77 66",
+                "tels_clean": ["0699887766"],
+            })
+            with patch.object(ws, "charger_overrides_categories", return_value=ws.CATEGORY_OVERRIDES):
+                cat, dur, _ = ws.qualifier_categorie_animal("AnimalInconnuXYZ", "Chien", "Yorkshire", "0699887766")
+                self.assertEqual((cat, dur), ("C", 90))
+        finally:
+            ws.CLIENTS_DB[:] = orig_db
+
+    def test_pro_api_requires_valid_pin_and_searches_clients(self):
+        import io
+        # Sans PIN -> 401
+        h = object.__new__(ws.WebhookHTTPHandler)
+        h.path = "/api/pro/clients?q=Taiko"
+        h.headers = {}
+        h.wfile = io.BytesIO()
+        codes = []
+        h.send_response = lambda c: codes.append(c)
+        h.send_header = lambda k, v: None
+        h.end_headers = lambda: None
+        h.do_GET()
+        self.assertEqual(codes[0], 401)
+
+        # Avec bon PIN -> 200 + résultats
+        h2 = object.__new__(ws.WebhookHTTPHandler)
+        h2.path = "/api/pro/clients?q=Taiko"
+        h2.headers = {"X-Pro-Pin": ws.PRO_PIN}
+        h2.wfile = io.BytesIO()
+        codes2 = []
+        h2.send_response = lambda c: codes2.append(c)
+        h2.send_header = lambda k, v: None
+        h2.end_headers = lambda: None
+        h2.do_GET()
+        self.assertEqual(codes2[0], 200)
+        res = json.loads(h2.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(res["status"], "success")
+        self.assertGreaterEqual(res["count"], 1)
+
+    def test_pro_client_save_updates_memory_and_apps_script(self):
+        import io
+        orig_db = list(ws.CLIENTS_DB)
+        try:
+            body = json.dumps({
+                "id": "CANIN-0275",
+                "nom_maitre": "Lorenzo (Livreur)",
+                "nom_animal": "Taiko",
+                "espece": "Chien",
+                "race": "Berger Australien",
+                "cat": "C",
+                "secteur": "Urrugne",
+                "telephone": "06 98 79 92 63",
+            }).encode("utf-8")
+            h = object.__new__(ws.WebhookHTTPHandler)
+            h.path = "/api/pro/client/save"
+            h.headers = {"Content-Length": str(len(body)), "X-Pro-Pin": ws.PRO_PIN}
+            h.rfile = io.BytesIO(body)
+            h.wfile = io.BytesIO()
+            codes = []
+            h.send_response = lambda c: codes.append(c)
+            h.send_header = lambda k, v: None
+            h.end_headers = lambda: None
+
+            mock_r = MagicMock()
+            mock_r.json.return_value = {"status": "success", "message": "OK", "client": {"id": "CANIN-0275"}}
+            with patch.object(ws.requests, "post", return_value=mock_r):
+                h.do_POST()
+            self.assertEqual(codes[0], 200)
+            res = json.loads(h.wfile.getvalue().decode("utf-8"))
+            self.assertEqual(res["status"], "success")
+            self.assertEqual(ws.CATEGORY_OVERRIDES["taiko"]["cat"], "C")
+        finally:
+            ws.CLIENTS_DB[:] = orig_db
+
+    def test_pro_rdv_creer_refuses_conflict_and_sends_sms_only_on_ok(self):
+        import io
+        body = json.dumps({
+            "nom_animal": "Taïko",
+            "nom_maitre": "Lorenzo",
+            "race": "Berger Australien",
+            "telephone": "0698799263",
+            "categorie": "C",
+            "duree_minutes": 90,
+            "date_proposee": "2026-12-04",
+            "heure_debut": "10:00",
+            "secteur": "Saint-Pée-sur-Nivelle",
+            "envoyer_sms": True,
+        }).encode("utf-8")
+
+        def _call():
+            h = object.__new__(ws.WebhookHTTPHandler)
+            h.path = "/api/pro/rdv/creer"
+            h.headers = {"Content-Length": str(len(body)), "X-Pro-Pin": ws.PRO_PIN}
+            h.rfile = io.BytesIO(body)
+            h.wfile = io.BytesIO()
+            h.send_response = lambda c: None
+            h.send_header = lambda k, v: None
+            h.end_headers = lambda: None
+            h.do_POST()
+            return json.loads(h.wfile.getvalue().decode("utf-8"))
+
+        with patch.object(ws, "inscrire_dans_google_calendar", return_value={"ok": False, "status": "conflict", "message": "Occupé"}), \
+             patch.object(ws, "envoyer_sms_macrodroid") as mock_sms:
+            r_err = _call()
+            self.assertEqual(r_err["status"], "error")
+            mock_sms.assert_not_called()
+
+        with patch.object(ws, "inscrire_dans_google_calendar", return_value={"ok": True, "status": "success", "eventId": "ev_pro_1"}), \
+             patch.object(ws, "envoyer_sms_macrodroid", return_value=True) as mock_sms_ok:
+            r_ok = _call()
+            self.assertEqual(r_ok["status"], "success")
+            import time
+            time.sleep(0.05)
+            mock_sms_ok.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -434,7 +434,7 @@
         </div>
         <div class="field">
           <label>Numéro de téléphone</label>
-          <input type="tel" name="telephone" placeholder="06 12 34 56 78" required>
+          <input type="tel" id="telephone" name="telephone" placeholder="06 12 34 56 78" required onchange="chargerCreneauxDisponibles()">
         </div>
 
         <!-- ENCART COURTOISIE OBLIGATOIRE -->
@@ -555,6 +555,7 @@
       const nom_animal = (document.getElementById('nom_animal').value || '').trim();
       const espece = document.getElementById('espece').value || 'Chien';
       const race = (document.getElementById('race').value || '').trim();
+      const telephone = (document.getElementById('telephone')?.value || '').trim();
 
       const area = document.getElementById('calendar-area');
 
@@ -570,7 +571,7 @@
         const res = await fetch('/api/creneaux_disponibles', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ secteur, nom_animal, espece, race })
+          body: JSON.stringify({ secteur, nom_animal, espece, race, telephone })
         });
         const data = await res.json();
 

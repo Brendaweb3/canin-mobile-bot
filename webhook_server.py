@@ -29,6 +29,8 @@ CLIENTS_PATH = os.path.join(BASE_DIR, "clients_db.json")
 AGENDA_PATH = os.path.join(BASE_DIR, "agenda_sandrine_oct_dec_2026.md")
 STATES_PATH = os.path.join(BASE_DIR, "user_states.json")
 RESERVER_HTML_PATH = os.path.join(BASE_DIR, "reserver.html")
+PRO_HTML_PATH = os.path.join(BASE_DIR, "pro.html")
+PRO_PIN = os.environ.get("PRO_PIN", "6412")
 
 # Journal de bord en mémoire vive
 LOG_BUFFER = []
@@ -201,6 +203,10 @@ def charger_overrides_categories(force: bool = False):
     if CATEGORY_OVERRIDES and not force:
         return CATEGORY_OVERRIDES
     try:
+        import unicodedata
+        def _norm_txt(s):
+            return "".join(ch for ch in unicodedata.normalize("NFD", (s or "").strip().lower()) if unicodedata.category(ch) != "Mn")
+
         r = requests.get(f"{APPS_SCRIPT_URL}?action=get_overrides", timeout=10)
         if r.status_code == 200:
             data = r.json()
@@ -209,11 +215,35 @@ def charger_overrides_categories(force: bool = False):
                     CATEGORY_OVERRIDES = data["overrides"]
                 custom_list = data.get("custom_clients", [])
                 if isinstance(custom_list, list) and custom_list:
-                    existing_ids = {c.get("id") for c in CLIENTS_DB}
                     for cc in custom_list:
-                        if cc.get("id") not in existing_ids:
+                        cc_id = cc.get("id")
+                        cc_a = _norm_txt(cc.get("nom_animal", ""))
+                        cc_m = _norm_txt(cc.get("nom_maitre", ""))
+                        matched_idx = None
+                        for idx, existing in enumerate(CLIENTS_DB):
+                            if cc_id and existing.get("id") == cc_id:
+                                matched_idx = idx
+                                break
+                            if cc_a and _norm_txt(existing.get("nom_animal", "")) == cc_a and _norm_txt(existing.get("nom_maitre", "")) == cc_m:
+                                matched_idx = idx
+                                break
+                        if matched_idx is not None:
+                            CLIENTS_DB[matched_idx].update(cc)
+                        else:
                             CLIENTS_DB.append(cc)
-                            existing_ids.add(cc.get("id"))
+
+                if CATEGORY_OVERRIDES:
+                    for c_item in CLIENTS_DB:
+                        k_a = _norm_txt(c_item.get("nom_animal", ""))
+                        if k_a and k_a in CATEGORY_OVERRIDES:
+                            ov = CATEGORY_OVERRIDES[k_a]
+                            ov_m = _norm_txt(ov.get("nom_maitre", ""))
+                            if not ov_m or ov_m == _norm_txt(c_item.get("nom_maitre", "")):
+                                cat_ov = (ov.get("cat") or c_item.get("cat") or "B").upper()
+                                c_item["cat"] = cat_ov
+                                c_item["duree"] = {
+                                    "A": "0h30", "B": "1h00", "C": "1h30", "D": "2h00"
+                                }.get(cat_ov, "1h00")
                 log(f"[OVERRIDES] {len(CATEGORY_OVERRIDES)} catégories + {len(custom_list)} clients perso chargés.")
     except Exception as e:
         log(f"[OVERRIDES ERROR] : {e}")
@@ -496,27 +526,29 @@ def _duree_par_cat(cat: str) -> int:
     return 60
 
 def qualifier_categorie_animal(nom_animal: str, espece: str, race: str, telephone: str = "") -> tuple:
+    import unicodedata
+    def _norm_q(s):
+        return "".join(ch for ch in unicodedata.normalize("NFD", (s or "").strip().lower()) if unicodedata.category(ch) != "Mn")
+
     nom_clean = (nom_animal or "").strip().lower()
-    if nom_clean:
+    nom_norm = _norm_q(nom_animal)
+    if nom_norm:
         overrides = charger_overrides_categories()
-        import unicodedata
-        nom_norm = "".join(ch for ch in unicodedata.normalize("NFD", nom_clean) if unicodedata.category(ch) != "Mn")
         if nom_norm in overrides:
             ov = overrides[nom_norm]
             cat = (ov.get("cat") or "B").upper()
             return cat, _duree_par_cat(cat), "Correction manuelle mémorisée (Google Sheet)"
 
     try:
-        db_path = os.path.join(os.path.dirname(__file__), "clients_db.json")
-        if os.path.exists(db_path):
-            with open(db_path, "r", encoding="utf-8") as f_db:
-                c_db = json.load(f_db)
-            tel_clean = telephone.replace(" ", "").replace(".", "") if telephone else ""
-            for item in c_db:
-                item_nom = item.get("nom_animal", "").lower()
-                if (nom_clean and nom_clean == item_nom) or (tel_clean and len(tel_clean) >= 8 and tel_clean in str(item).replace(" ", "")):
-                    cat = (item.get("cat") or item.get("categorie") or "B").upper()
-                    return cat, _duree_par_cat(cat), "Fiche client retrouvée en base"
+        tel_clean = re.sub(r"\D", "", telephone or "")
+        for item in reversed(CLIENTS_DB):
+            item_nom_norm = _norm_q(item.get("nom_animal", ""))
+            item_tels = "".join(item.get("tels_clean", [])) + re.sub(r"\D", "", item.get("tel", ""))
+            match_nom = bool(nom_norm and item_nom_norm and nom_norm == item_nom_norm)
+            match_tel = bool(tel_clean and len(tel_clean) >= 8 and tel_clean in item_tels)
+            if match_nom or match_tel:
+                cat = (item.get("cat") or item.get("categorie") or "B").upper()
+                return cat, _duree_par_cat(cat), "Fiche client retrouvée en base"
     except Exception as e:
         log(f"[QUALIF ERROR] : {e}")
 
@@ -1349,20 +1381,34 @@ def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat:
 
 
 class WebhookHTTPHandler(BaseHTTPRequestHandler):
+    def _send_json(self, code: int, obj: dict):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
+
+    def _check_pro_pin(self) -> bool:
+        pin = (self.headers.get("X-Pro-Pin") or "").strip()
+        if pin != PRO_PIN:
+            self._send_json(401, {"status": "error", "message": "Code PIN incorrect."})
+            return False
+        return True
+
     def do_GET(self):
-        if self.path == "/health":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({
+        parsed = urllib.parse.urlparse(self.path)
+        path_only = parsed.path
+        qs = urllib.parse.parse_qs(parsed.query)
+
+        if path_only == "/health":
+            self._send_json(200, {
                 "status": "ok",
                 "clients_db": len(CLIENTS_DB),
                 "category_overrides": len(CATEGORY_OVERRIDES),
                 "pending_actions": len(PENDING_ACTIONS)
-            }).encode("utf-8"))
+            })
             return
 
-        if self.path == "/logs":
+        if path_only == "/logs":
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
@@ -1370,8 +1416,97 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(log_text.encode("utf-8"))
             return
 
+        if path_only in ["/pro", "/app"]:
+            if os.path.exists(PRO_HTML_PATH):
+                try:
+                    with open(PRO_HTML_PATH, "r", encoding="utf-8") as f:
+                        html_pro = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(html_pro.encode("utf-8"))
+                    return
+                except Exception as e_pro:
+                    log(f"[PRO HTML ERROR] : {e_pro}")
+
+        if path_only == "/api/pro/clients":
+            if not self._check_pro_pin():
+                return
+            import unicodedata
+            def _n_pro(s):
+                return "".join(ch for ch in unicodedata.normalize("NFD", (s or "").lower()) if unicodedata.category(ch) != "Mn")
+            q_raw = (qs.get("q", [""])[0] or "").strip()
+            q_norm = _n_pro(q_raw)
+            q_digits = re.sub(r"\D", "", q_raw)
+            if not q_norm:
+                matches = list(reversed(CLIENTS_DB))[:50]
+            else:
+                matches = []
+                for c in reversed(CLIENTS_DB):
+                    hay = " ".join([
+                        _n_pro(c.get("nom_animal", "")),
+                        _n_pro(c.get("nom_maitre", "")),
+                        _n_pro(c.get("race", "")),
+                        _n_pro(c.get("secteur", "")),
+                        _n_pro(c.get("id", "")),
+                    ])
+                    tel_c = re.sub(r"\D", "", c.get("tel", "")) + "".join(c.get("tels_clean", []))
+                    if q_norm in hay or (len(q_digits) >= 3 and q_digits in tel_c):
+                        matches.append(c)
+            self._send_json(200, {
+                "status": "success",
+                "total": len(CLIENTS_DB),
+                "count": len(matches),
+                "clients": matches[:50]
+            })
+            return
+
+        if path_only == "/api/pro/agenda":
+            if not self._check_pro_pin():
+                return
+            live = obtenir_evenements_google_calendar_direct()
+            if live is None:
+                self._send_json(503, {"status": "error", "message": "Google Agenda temporairement inaccessible."})
+                return
+            tz = _get_paris_tz()
+            now_p = datetime.now(tz)
+            start_day = now_p.date()
+            end_day = start_day + timedelta(days=35)
+            events_out = []
+            for ev in live:
+                st_iso = ev.get("start", "")
+                end_iso = ev.get("end", "")
+                if not st_iso:
+                    continue
+                try:
+                    dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
+                    dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
+                    if dt_s.date() < start_day or dt_s.date() > end_day:
+                        continue
+                    d_str = dt_s.strftime("%Y-%m-%d")
+                    dur_m = max(15, int((dt_e - dt_s).total_seconds() // 60))
+                    titre = (ev.get("title") or "RDV").strip()
+                    desc = (ev.get("description") or "").strip()
+                    events_out.append({
+                        "id": ev.get("id", ""),
+                        "date": d_str,
+                        "date_fr": date_vers_texte_fr(dt_s),
+                        "heure_debut": dt_s.strftime("%H:%M"),
+                        "heure_fin": dt_e.strftime("%H:%M"),
+                        "duree_minutes": dur_m,
+                        "title": titre,
+                        "description": desc,
+                        "telephone": _extraire_mobile_fr(titre, desc),
+                        "secteur": deduire_secteur_par_date(d_str)
+                    })
+                except Exception:
+                    pass
+            events_out.sort(key=lambda x: (x["date"], x["heure_debut"]))
+            self._send_json(200, {"status": "success", "events": events_out})
+            return
+
         # Affichage de la page web mobile de réservation en ligne
-        if self.path in ["/", "/reserver", "/reservation"]:
+        if path_only in ["/", "/reserver", "/reservation"]:
             if os.path.exists(RESERVER_HTML_PATH):
                 try:
                     with open(RESERVER_HTML_PATH, "r", encoding="utf-8") as f:
@@ -1394,6 +1529,215 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
 
+            # Routes API Pro (Mini-App Sandrine)
+            if self.path == "/api/pro/client/save":
+                if not self._check_pro_pin():
+                    return
+                payload = json.loads(post_data.decode("utf-8"))
+                nom_a = (payload.get("nom_animal") or "").strip()
+                if not nom_a:
+                    self._send_json(400, {"status": "error", "message": "Le nom de l'animal est obligatoire."})
+                    return
+                nom_m = (payload.get("nom_maitre") or "Non précisé").strip()
+                esp = (payload.get("espece") or "Chien").strip()
+                race = (payload.get("race") or "Non précisée").strip()
+                cat = (payload.get("cat") or payload.get("categorie") or "B").upper()
+                if cat not in ["A", "B", "C", "D"]:
+                    cat = "B"
+                sec = (payload.get("secteur") or "Urrugne").strip()
+                tel = (payload.get("telephone") or payload.get("tel") or "").strip()
+                cid = (payload.get("id") or "").strip()
+
+                r_save = requests.post(APPS_SCRIPT_URL, json={
+                    "action": "save_client",
+                    "nom_maitre": nom_m,
+                    "nom_animal": nom_a,
+                    "espece": esp,
+                    "race": race,
+                    "cat": cat,
+                    "telephone": tel,
+                    "secteur": sec,
+                }, timeout=20).json()
+                if r_save.get("status") != "success":
+                    self._send_json(200, {"status": "error", "message": r_save.get("message", "Erreur sauvegarde Google.")})
+                    return
+
+                try:
+                    requests.post(APPS_SCRIPT_URL, json={
+                        "action": "update_category",
+                        "nom_animal": nom_a,
+                        "categorie": cat,
+                        "race": race,
+                        "nom_maitre": nom_m,
+                    }, timeout=15)
+                except Exception:
+                    pass
+
+                import unicodedata
+                def _n_sv(s):
+                    return "".join(ch for ch in unicodedata.normalize("NFD", (s or "").strip().lower()) if unicodedata.category(ch) != "Mn")
+
+                saved_client = r_save.get("client") if isinstance(r_save.get("client"), dict) else {}
+                if cid:
+                    saved_client["id"] = cid
+                saved_client.setdefault("nom_maitre", nom_m)
+                saved_client.setdefault("nom_animal", nom_a)
+                saved_client.setdefault("espece", esp)
+                saved_client.setdefault("race", race)
+                saved_client["cat"] = cat
+                saved_client["duree"] = {"A": "0h30", "B": "1h00", "C": "1h30", "D": "2h00"}.get(cat, "1h00")
+                saved_client["secteur"] = sec
+                saved_client["tel"] = tel
+                saved_client["tels_clean"] = [re.sub(r"\D", "", tel)] if tel else []
+
+                matched_idx = None
+                for idx, ex in enumerate(CLIENTS_DB):
+                    if cid and ex.get("id") == cid:
+                        matched_idx = idx
+                        break
+                    if _n_sv(ex.get("nom_animal", "")) == _n_sv(nom_a) and _n_sv(ex.get("nom_maitre", "")) == _n_sv(nom_m):
+                        matched_idx = idx
+                        break
+                if matched_idx is not None:
+                    CLIENTS_DB[matched_idx].update(saved_client)
+                    saved_client = CLIENTS_DB[matched_idx]
+                else:
+                    CLIENTS_DB.append(saved_client)
+
+                k_ov = _n_sv(nom_a)
+                if k_ov:
+                    CATEGORY_OVERRIDES[k_ov] = {
+                        "nom_animal": nom_a,
+                        "cat": cat,
+                        "race": race,
+                        "nom_maitre": nom_m,
+                    }
+
+                self._send_json(200, {
+                    "status": "success",
+                    "client": saved_client,
+                    "message": r_save.get("message", "Fiche enregistrée !")
+                })
+                return
+
+            if self.path == "/api/pro/rdv/creer":
+                if not self._check_pro_pin():
+                    return
+                payload = json.loads(post_data.decode("utf-8"))
+                nom_a = (payload.get("nom_animal") or "").strip()
+                date_p = (payload.get("date_proposee") or "").strip()
+                heure = (payload.get("heure_debut") or "").strip()
+                if not nom_a or not date_p or not heure:
+                    self._send_json(400, {"status": "error", "message": "Animal, date et heure sont obligatoires."})
+                    return
+                nom_m = (payload.get("nom_maitre") or "").strip()
+                race = (payload.get("race") or "").strip()
+                tel = (payload.get("telephone") or "").strip()
+                cat = (payload.get("categorie") or "B").upper()
+                dur = int(payload.get("duree_minutes") or _duree_par_cat(cat))
+                sec = (payload.get("secteur") or deduire_secteur_par_date(date_p)).strip()
+                envoyer_sms = bool(payload.get("envoyer_sms", True))
+
+                res_gcal = inscrire_dans_google_calendar({
+                    "nom_animal": nom_a,
+                    "nom_maitre": nom_m,
+                    "race": race,
+                    "telephone": tel,
+                    "date_proposee": date_p,
+                    "heure_debut": heure,
+                    "categorie": cat,
+                    "duree_minutes": dur,
+                    "secteur": sec,
+                    "source": "telegram",
+                })
+                if not res_gcal.get("ok"):
+                    self._send_json(200, {
+                        "status": "error",
+                        "message": res_gcal.get("message", "Créneau déjà occupé dans Google Agenda.")
+                    })
+                    return
+
+                if envoyer_sms and tel:
+                    date_fr, heure_fr = _formater_date_heure_fr(date_p, heure)
+                    lieu_exact = "Maison des Associations (Kixoenea)" if "urrugne" in sec.lower() else "À côté du Garage Renault"
+                    sms_txt = (
+                        f"Bonjour ! Votre RDV pour {nom_a} est confirmé le {date_fr or date_p} à {heure_fr or heure.replace(':', 'h')} "
+                        f"({lieu_exact}, {sec}). Pensez à prévenir 24h avant en cas d'empêchement. Sandrine - La Canin Mobile"
+                    )
+                    threading.Thread(target=envoyer_sms_macrodroid, args=(tel, sms_txt), daemon=True).start()
+
+                self._send_json(200, {
+                    "status": "success",
+                    "eventId": res_gcal.get("eventId", ""),
+                    "message": "Rendez-vous inscrit dans Google Agenda !"
+                })
+                return
+
+            if self.path == "/api/pro/rdv/deplacer":
+                if not self._check_pro_pin():
+                    return
+                payload = json.loads(post_data.decode("utf-8"))
+                new_date = (payload.get("new_date") or "").strip()
+                new_heure = (payload.get("new_heure") or "").strip()
+                if not new_date or not new_heure:
+                    self._send_json(400, {"status": "error", "message": "Nouvelle date et heure requises."})
+                    return
+                dur = int(payload.get("duree_minutes") or 60)
+                start_dt = datetime.strptime(f"{new_date} {new_heure}", "%Y-%m-%d %H:%M")
+                end_dt = start_dt + timedelta(minutes=dur)
+                tz_p = _get_paris_tz()
+                tel = (payload.get("telephone") or "").strip()
+                nom_a = (payload.get("nom_animal") or "").strip()
+                envoyer_sms = bool(payload.get("envoyer_sms", False))
+
+                r_mv = requests.post(APPS_SCRIPT_URL, json={
+                    "action": "move",
+                    "eventId": payload.get("eventId", ""),
+                    "nom_animal": nom_a,
+                    "nom_maitre": payload.get("nom_maitre", ""),
+                    "telephone": tel,
+                    "old_date": payload.get("old_date", ""),
+                    "new_start": start_dt.replace(tzinfo=tz_p).isoformat(),
+                    "new_end": end_dt.replace(tzinfo=tz_p).isoformat(),
+                }, timeout=20).json()
+                if r_mv.get("status") == "success" and envoyer_sms and tel:
+                    date_fr, heure_fr = _formater_date_heure_fr(new_date, new_heure)
+                    sec = deduire_secteur_par_date(new_date)
+                    lieu_exact = "Maison des Associations (Kixoenea)" if "urrugne" in sec.lower() else "À côté du Garage Renault"
+                    sms_mv = (
+                        f"Bonjour ! Votre RDV pour {nom_a or 'votre animal'} a bien été déplacé au {date_fr or new_date} à {heure_fr or new_heure} "
+                        f"({lieu_exact}, {sec}). À très vite ! Sandrine - La Canin Mobile"
+                    )
+                    threading.Thread(target=envoyer_sms_macrodroid, args=(tel, sms_mv), daemon=True).start()
+                self._send_json(200, r_mv)
+                return
+
+            if self.path == "/api/pro/rdv/annuler":
+                if not self._check_pro_pin():
+                    return
+                payload = json.loads(post_data.decode("utf-8"))
+                nom_a = (payload.get("nom_animal") or "").strip()
+                tel = (payload.get("telephone") or "").strip()
+                date_ev = (payload.get("date") or "").strip()
+                envoyer_sms = bool(payload.get("envoyer_sms", False))
+
+                r_del = requests.post(APPS_SCRIPT_URL, json={
+                    "action": "delete",
+                    "eventId": payload.get("eventId", ""),
+                    "nom_animal": nom_a,
+                    "nom_maitre": payload.get("nom_maitre", ""),
+                    "telephone": tel,
+                    "date": date_ev,
+                }, timeout=20).json()
+                if r_del.get("status") == "success" and envoyer_sms:
+                    tel_sms = _extraire_mobile_fr(r_del.get("description", ""), tel)
+                    if tel_sms:
+                        date_fr, heure_fr = _formater_date_heure_fr(r_del.get("start") or date_ev)
+                        sms_ann = _construire_sms_annulation(nom_a or "votre animal", date_fr, heure_fr)
+                        threading.Thread(target=envoyer_sms_macrodroid, args=(tel_sms, sms_ann), daemon=True).start()
+                self._send_json(200, r_del)
+                return
+
             # Route API : Liste des créneaux pour le calendrier de réservation
             if self.path == "/api/creneaux_disponibles":
                 try:
@@ -1402,8 +1746,9 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                     nom_a = payload.get("nom_animal", "Animal")
                     esp = payload.get("espece", "Chien")
                     race = payload.get("race", "Non précisée")
+                    tel = payload.get("telephone", "").strip()
 
-                    cat, dur, _ = qualifier_categorie_animal(nom_a, esp, race)
+                    cat, dur, _ = qualifier_categorie_animal(nom_a, esp, race, tel)
                     dispos = obtenir_tous_les_creneaux_disponibles(sec, dur, cat, max_jours=10)
                     if dispos is None:
                         self.send_response(503)

@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#9f1239">
+  <title>La Canin Mobile Pro</title>
+  <style>
+    :root {
+      --bg: #faf7f5;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --brand: #9f1239;
+      --brand-soft: #fff1f2;
+      --sage: #15803d;
+      --sage-soft: #ecfdf5;
+      --border: #e5e7eb;
+      --shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding-bottom: 84px;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: var(--brand);
+      color: #fff;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(159, 18, 57, 0.25);
+    }
+    header h1 { margin: 0; font-size: 17px; font-weight: 700; }
+    header .sub { font-size: 11px; opacity: 0.9; }
+    .btn-logout {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #fff;
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .container { max-width: 680px; margin: 0 auto; padding: 14px; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* PIN screen */
+    #pin-screen {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: var(--bg);
+    }
+    .pin-card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 28px 22px;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    }
+    .pin-input {
+      width: 100%;
+      font-size: 26px;
+      letter-spacing: 10px;
+      text-align: center;
+      padding: 12px;
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      margin: 14px 0;
+      outline: none;
+    }
+    .pin-input:focus { border-color: var(--brand); }
+
+    /* Inputs & Buttons */
+    .search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .input, select {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 15px;
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--text);
+      outline: none;
+    }
+    .input:focus, select:focus { border-color: var(--brand); }
+    label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 44px;
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: none;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--brand); color: #fff; }
+    .btn-sage { background: var(--sage); color: #fff; }
+    .btn-outline { background: #fff; color: var(--text); border: 1.5px solid var(--border); }
+    .btn-danger { background: #fee2e2; color: #b91c1c; }
+    .btn-sm { min-height: 38px; padding: 7px 11px; font-size: 13px; border-radius: 10px; }
+    .btn-block { width: 100%; }
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 10px;
+      box-shadow: var(--shadow);
+      border: 1px solid #f1ece8;
+    }
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .animal-name { font-size: 17px; font-weight: 800; color: #111827; }
+    .owner-name { font-size: 14px; color: #374151; margin-top: 2px; font-weight: 600; }
+    .meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .badge {
+      display: inline-block;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .cat-A { background: #dbeafe; color: #1e40af; }
+    .cat-B { background: #dcfce7; color: #166534; }
+    .cat-C { background: #fef3c7; color: #92400e; }
+    .cat-D { background: #fee2e2; color: #991b1b; }
+    .card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+    /* Category pills */
+    .cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 4px; }
+    .cat-btn {
+      padding: 10px 4px;
+      border-radius: 12px;
+      border: 1.5px solid var(--border);
+      background: #fff;
+      font-weight: 800;
+      font-size: 13px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .cat-btn small { display: block; font-weight: 600; font-size: 11px; color: var(--muted); }
+    .cat-btn.active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+
+    /* Agenda */
+    .day-header {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--brand);
+      margin: 16px 0 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .day-pill { font-size: 11px; background: var(--brand-soft); color: var(--brand); padding: 3px 8px; border-radius: 999px; }
+
+    /* Bottom nav */
+    nav.bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 30;
+      background: #fff;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      height: 68px;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+    }
+    .nav-btn {
+      background: none;
+      border: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      cursor: pointer;
+      gap: 3px;
+    }
+    .nav-btn span.ico { font-size: 20px; }
+    .nav-btn.active { color: var(--brand); }
+
+    /* Modals & Toast */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 50;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-sheet {
+      background: #fff;
+      width: 100%;
+      max-width: 600px;
+      border-radius: 22px 22px 0 0;
+      padding: 20px 18px 28px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .toast {
+      position: fixed;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 60;
+      background: #111827;
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      display: none;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+      max-width: 90%;
+      text-align: center;
+    }
+    .alert-box {
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-top: 12px;
+      display: none;
+    }
+    .alert-ok { background: var(--sage-soft); color: var(--sage); border: 1px solid #86efac; }
+    .alert-err { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .quick-suggest {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-top: 4px;
+      overflow: hidden;
+      display: none;
+    }
+    .quick-item {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f3f4f6;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .quick-item:last-child { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+  <div id="pin-screen">
+    <div class="pin-card">
+      <div style="font-size:36px;">🐾</div>
+      <h2 style="margin:8px 0 4px;">La Canin Mobile Pro</h2>
+      <p style="margin:0; color:var(--muted); font-size:14px;">Espace Sandrine — Entrez votre code PIN</p>
+      <input type="password" inputmode="numeric" maxlength="8" id="pin-input" class="pin-input" placeholder="••••">
+      <button class="btn btn-primary btn-block" onclick="validerPin()">Déverrouiller</button>
+      <div id="pin-err" style="color:#b91c1c; font-size:13px; margin-top:10px; font-weight:700;"></div>
+    </div>
+  </div>
+
+  <div id="app-shell" style="display:none;">
+    <header>
+      <div>
+        <h1>🐾 La Canin Mobile Pro</h1>
+        <div class="sub" id="header-sub">Carnet numérique & Google Agenda en direct</div>
+      </div>
+      <button class="btn-logout" onclick="deconnecter()">Verrouiller</button>
+    </header>
+
+    <div class="container">
+      <!-- ONGLET 1 : FICHES CLIENTS -->
+      <section id="tab-clients" class="tab-pane active">
+        <div class="search-row">
+          <input type="search" id="search-client" class="input" placeholder="Tapez 2 lettres : animal, maître, tél..." oninput="debouncedSearch()">
+          <button class="btn btn-primary" onclick="ouvrirModalClient(null)">➕ Fiche</button>
+        </div>
+        <div id="clients-count" style="font-size:12px; color:var(--muted); margin-bottom:8px; font-weight:600;"></div>
+        <div id="clients-list"></div>
+      </section>
+
+      <!-- ONGLET 2 : AGENDA LIVE -->
+      <section id="tab-agenda" class="tab-pane">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <strong style="font-size:15px;">35 prochains jours (Google Agenda)</strong>
+          <button class="btn btn-outline btn-sm" onclick="chargerAgenda()">🔄 Actualiser</button>
+        </div>
+        <div id="agenda-list"></div>
+      </section>
+
+      <!-- ONGLET 3 : NOUVEAU RDV -->
+      <section id="tab-rdv" class="tab-pane">
+        <div class="card">
+          <h3 style="margin:0 0 8px;">📅 Poser un rendez-vous</h3>
+          <label>Recherche rapide d'une fiche existante</label>
+          <input type="search" id="rdv-quick-search" class="input" placeholder="Ex : Taïko, Falco, Martine..." oninput="rechercherPourRdv()">
+          <div id="rdv-quick-suggest" class="quick-suggest"></div>
+
+          <label>Animal *</label>
+          <input type="text" id="rdv-animal" class="input" placeholder="Nom du chien / chat">
+
+          <label>Maître</label>
+          <input type="text" id="rdv-maitre" class="input" placeholder="Nom du propriétaire">
+
+          <label>Race</label>
+          <input type="text" id="rdv-race" class="input" placeholder="Ex : Berger Australien, Yorkshire...">
+
+          <label>Téléphone (06 / 07 pour SMS)</label>
+          <input type="tel" id="rdv-tel" class="input" placeholder="06 12 34 56 78">
+
+          <label>Durée & Catégorie</label>
+          <div class="cat-grid" id="rdv-cat-grid">
+            <button type="button" class="cat-btn" data-cat="A" onclick="choisirCatRdv('A')">Cat. A<small>30 min</small></button>
+            <button type="button" class="cat-btn active" data-cat="B" onclick="choisirCatRdv('B')">Cat. B<small>1h00</small></button>
+            <button type="button" class="cat-btn" data-cat="C" onclick="choisirCatRdv('C')">Cat. C<small>1h30</small></button>
+            <button type="button" class="cat-btn" data-cat="D" onclick="choisirCatRdv('D')">Cat. D<small>2h00</small></button>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:4px;">
+            <div>
+              <label>Date *</label>
+              <input type="date" id="rdv-date" class="input" onchange="majSecteurDepuisDate()">
+            </div>
+            <div>
+              <label>Heure *</label>
+              <input type="time" id="rdv-heure" class="input" value="09:00" step="900">
+            </div>
+          </div>
+
+          <label>Secteur</label>
+          <select id="rdv-secteur">
+            <option value="Urrugne">Urrugne (Mar / Mer / Sam)</option>
+            <option value="Saint-Pée-sur-Nivelle">Saint-Pée-sur-Nivelle (Jeu / Ven)</option>
+          </select>
+
+          <label style="display:flex; align-items:center; gap:8px; text-transform:none; font-size:14px; color:var(--text); margin-top:14px;">
+            <input type="checkbox" id="rdv-sms" checked style="width:18px; height:18px;">
+            📲 Envoyer le SMS de confirmation au client
+          </label>
+
+          <button type="button" id="btn-creer-rdv" class="btn btn-sage btn-block" style="margin-top:14px;" onclick="creerRdv()">✅ Inscrire dans Google Agenda</button>
+          <div id="rdv-feedback" class="alert-box"></div>
+        </div>
+      </section>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn active" id="nav-clients" onclick="switchTab('clients')"><span class="ico">🔍</span>Fiches</button>
+      <button class="nav-btn" id="nav-agenda" onclick="switchTab('agenda')"><span class="ico">📅</span>Agenda</button>
+      <button class="nav-btn" id="nav-rdv" onclick="switchTab('rdv')"><span class="ico">➕</span>Nouveau RDV</button>
+    </nav>
+  </div>
+
+  <!-- MODAL FICHE CLIENT -->
+  <div id="modal-client" class="modal-backdrop" onclick="if(event.target===this)fermerModalClient()">
+    <div class="modal-sheet">
+      <h3 id="mc-title" style="margin:0 0 8px;">✏️ Fiche Client</h3>
+      <input type="hidden" id="mc-id">
+      <label>Animal *</label>
+      <input type="text" id="mc-animal" class="input">
+      <label>Maître</label>
+      <input type="text" id="mc-maitre" class="input">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div>
+          <label>Espèce</label>
+          <select id="mc-espece"><option value="Chien">Chien</option><option value="Chat">Chat</option></select>
+        </div>
+        <div>
+          <label>Téléphone</label>
+          <input type="tel" id="mc-tel" class="input">
+        </div>
+      </div>
+      <label>Race</label>
+      <input type="text" id="mc-race" class="input">
+      <label>Catégorie par défaut</label>
+      <div class="cat-grid" id="mc-cat-grid">
+        <button type="button" class="cat-btn" data-cat="A" onclick="choisirCatModal('A')">Cat. A<small>30 min</small></button>
+        <button type="button" class="cat-btn active" data-cat="B" onclick="choisirCatModal('B')">Cat. B<small>1h00</small></button>
+        <button type="button" class="cat-btn" data-cat="C" onclick="choisirCatModal('C')">Cat. C<small>1h30</small></button>
+        <button type="button" class="cat-btn" data-cat="D" onclick="choisirCatModal('D')">Cat. D<small>2h00</small></button>
+      </div>
+      <label>Secteur habituel</label>
+      <select id="mc-secteur">
+        <option value="Urrugne">Urrugne</option>
+        <option value="Saint-Pée-sur-Nivelle">Saint-Pée-sur-Nivelle</option>
+      </select>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;">
+        <button type="button" class="btn btn-outline" onclick="fermerModalClient()">Annuler</button>
+        <button type="button" id="mc-save-btn" class="btn btn-primary" onclick="sauvegarderClient()">💾 Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DEPLACER RDV -->
+  <div id="modal-move" class="modal-backdrop" onclick="if(event.target===this)fermerModalMove()">
+    <div class="modal-sheet">
+      <h3 style="margin:0 0 6px;">🔄 Déplacer le rendez-vous</h3>
+      <div id="mm-label" style="font-size:13px; color:var(--muted); margin-bottom:10px;"></div>
+      <input type="hidden" id="mm-id">
+      <input type="hidden" id="mm-old-date">
+      <input type="hidden" id="mm-animal">
+      <input type="hidden" id="mm-tel">
+      <input type="hidden" id="mm-dur">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div><label>Nouvelle date</label><input type="date" id="mm-date" class="input"></div>
+        <div><label>Nouvelle heure</label><input type="time" id="mm-heure" class="input" step="900"></div>
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; text-transform:none; font-size:14px; color:var(--text); margin-top:12px;">
+        <input type="checkbox" id="mm-sms" checked style="width:18px; height:18px;">
+        📲 Prévenir le client par SMS
+      </label>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;">
+        <button type="button" class="btn btn-outline" onclick="fermerModalMove()">Fermer</button>
+        <button type="button" id="mm-btn" class="btn btn-primary" onclick="confirmerMove()">Valider</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const DUREES = { A: 30, B: 60, C: 90, D: 120 };
+    const DUREE_LABELS = { A: "30m", B: "1h", C: "1h30", D: "2h" };
+    let PRO_PIN = localStorage.getItem('canin_pro_pin') || '';
+    let searchTimer = null;
+    let rdvCat = 'B';
+    let modalCat = 'B';
+
+    function toast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 3000);
+    }
+
+    async function apiFetch(url, opts = {}) {
+      const headers = { ...(opts.headers || {}), 'X-Pro-Pin': PRO_PIN };
+      if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+      const res = await fetch(url, { ...opts, headers });
+      if (res.status === 401) {
+        localStorage.removeItem('canin_pro_pin');
+        PRO_PIN = '';
+        document.getElementById('app-shell').style.display = 'none';
+        document.getElementById('pin-screen').style.display = 'flex';
+        throw new Error('Code PIN incorrect');
+      }
+      return res.json();
+    }
+
+    async function validerPin() {
+      const val = (document.getElementById('pin-input').value || '').trim();
+      const err = document.getElementById('pin-err');
+      err.textContent = '';
+      if (!val) { err.textContent = 'Saisissez votre code PIN.'; return; }
+      PRO_PIN = val;
+      try {
+        const data = await apiFetch('/api/pro/clients?q=');
+        if (data.status === 'success') {
+          localStorage.setItem('canin_pro_pin', val);
+          ouvrirApp(data);
+        } else {
+          err.textContent = data.message || 'Erreur';
+        }
+      } catch (e) {
+        err.textContent = e.message || 'Code PIN incorrect';
+      }
+    }
+
+    function deconnecter() {
+      localStorage.removeItem('canin_pro_pin');
+      PRO_PIN = '';
+      document.getElementById('pin-input').value = '';
+      document.getElementById('app-shell').style.display = 'none';
+      document.getElementById('pin-screen').style.display = 'flex';
+    }
+
+    function ouvrirApp(initialClients) {
+      document.getElementById('pin-screen').style.display = 'none';
+      document.getElementById('app-shell').style.display = 'block';
+      const today = new Date().toISOString().slice(0, 10);
+      document.getElementById('rdv-date').value = today;
+      majSecteurDepuisDate();
+      if (initialClients) renderClients(initialClients);
+      else chargerClients();
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      document.getElementById('nav-' + name).classList.add('active');
+      if (name === 'agenda') chargerAgenda();
+    }
+
+    function debouncedSearch() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(chargerClients, 180);
+    }
+
+    async function chargerClients() {
+      const q = encodeURIComponent((document.getElementById('search-client').value || '').trim());
+      try {
+        const data = await apiFetch('/api/pro/clients?q=' + q);
+        renderClients(data);
+      } catch (e) {
+        toast('Erreur chargement fiches');
+      }
+    }
+
+    function esc(s) {
+      return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderClients(data) {
+      const countEl = document.getElementById('clients-count');
+      const listEl = document.getElementById('clients-list');
+      countEl.textContent = `${data.count} fiche(s) trouvée(s) sur ${data.total}`;
+      if (!data.clients || data.clients.length === 0) {
+        listEl.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Aucune fiche trouvée. Cliquez sur ➕ Fiche pour en créer une.</div>';
+        return;
+      }
+      listEl.innerHTML = data.clients.map(c => {
+        const cat = (c.cat || 'B').toUpperCase();
+        const tel = (c.tel || '').trim();
+        const telLink = tel && tel.toLowerCase() !== 'a renseigner'
+          ? `<a class="btn btn-outline btn-sm" href="tel:${esc(tel.replace(/\s+/g,''))}">📞 ${esc(tel)}</a>` : '';
+        const payloadJson = esc(JSON.stringify(c));
+        return `<div class="card">
+          <div class="card-top">
+            <div>
+              <div class="animal-name">🐾 ${esc(c.nom_animal)}</div>
+              <div class="owner-name">👤 ${esc(c.nom_maitre)}</div>
+              <div class="meta">${esc(c.race || 'Race non précisée')} · 📍 ${esc(c.secteur || 'Urrugne')}</div>
+            </div>
+            <span class="badge cat-${esc(cat)}">Cat. ${esc(cat)} · ${DUREE_LABELS[cat] || '1h'}</span>
+          </div>
+          <div class="card-actions">
+            ${telLink}
+            <button class="btn btn-outline btn-sm" onclick='ouvrirModalClient(${payloadJson})'>✏️ Modifier</button>
+            <button class="btn btn-primary btn-sm" onclick='preparerRdvDepuisFiche(${payloadJson})'>📅 Prendre RDV</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function choisirCatModal(c) {
+      modalCat = c;
+      document.querySelectorAll('#mc-cat-grid .cat-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === c));
+    }
+
+    function ouvrirModalClient(c) {
+      document.getElementById('mc-title').textContent = c ? '✏️ Modifier la fiche' : '➕ Nouvelle fiche client';
+      document.getElementById('mc-id').value = c?.id || '';
+      document.getElementById('mc-animal').value = c?.nom_animal || '';
+      document.getElementById('mc-maitre').value = c?.nom_maitre || '';
+      document.getElementById('mc-espece').value = (c?.espece === 'Chat') ? 'Chat' : 'Chien';
+      document.getElementById('mc-tel').value = (c?.tel && c.tel !== 'A renseigner') ? c.tel : '';
+      document.getElementById('mc-race').value = c?.race || '';
+      document.getElementById('mc-secteur').value = (c?.secteur && c.secteur.includes('Saint-Pée')) ? 'Saint-Pée-sur-Nivelle' : 'Urrugne';
+      choisirCatModal((c?.cat || 'B').toUpperCase());
+      document.getElementById('modal-client').classList.add('open');
+    }
+
+    function fermerModalClient() { document.getElementById('modal-client').classList.remove('open'); }
+
+    async function sauvegarderClient() {
+      const btn = document.getElementById('mc-save-btn');
+      const nom_animal = document.getElementById('mc-animal').value.trim();
+      if (!nom_animal) { toast("Le nom de l'animal est obligatoire"); return; }
+      btn.disabled = true;
+      btn.textContent = 'Enregistrement...';
+      try {
+        const res = await apiFetch('/api/pro/client/save', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: document.getElementById('mc-id').value,
+            nom_animal,
+            nom_maitre: document.getElementById('mc-maitre').value.trim() || 'Non précisé',
+            espece: document.getElementById('mc-espece').value,
+            telephone: document.getElementById('mc-tel').value.trim(),
+            race: document.getElementById('mc-race').value.trim() || 'Non précisée',
+            cat: modalCat,
+            secteur: document.getElementById('mc-secteur').value,
+          })
+        });
+        if (res.status === 'success') {
+          fermerModalClient();
+          toast('✅ Fiche enregistrée !');
+          chargerClients();
+        } else {
+          toast('❌ ' + (res.message || 'Erreur'));
+        }
+      } catch (e) {
+        toast('❌ Erreur réseau');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 Enregistrer';
+      }
+    }
+
+    function choisirCatRdv(c) {
+      rdvCat = c;
+      document.querySelectorAll('#rdv-cat-grid .cat-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === c));
+    }
+
+    function preparerRdvDepuisFiche(c) {
+      document.getElementById('rdv-animal').value = c.nom_animal || '';
+      document.getElementById('rdv-maitre').value = c.nom_maitre || '';
+      document.getElementById('rdv-race').value = c.race || '';
+      document.getElementById('rdv-tel').value = (c.tel && c.tel !== 'A renseigner') ? c.tel : '';
+      choisirCatRdv((c.cat || 'B').toUpperCase());
+      document.getElementById('rdv-feedback').style.display = 'none';
+      switchTab('rdv');
+    }
+
+    async function rechercherPourRdv() {
+      const q = document.getElementById('rdv-quick-search').value.trim();
+      const box = document.getElementById('rdv-quick-suggest');
+      if (q.length < 2) { box.style.display = 'none'; return; }
+      try {
+        const data = await apiFetch('/api/pro/clients?q=' + encodeURIComponent(q));
+        if (!data.clients || data.clients.length === 0) { box.style.display = 'none'; return; }
+        box.innerHTML = data.clients.slice(0, 6).map(c =>
+          `<div class="quick-item" onclick='selectionnerPourRdv(${esc(JSON.stringify(c))})'><strong>${esc(c.nom_animal)}</strong> · ${esc(c.nom_maitre)} (${esc(c.race)} · Cat. ${esc(c.cat)})</div>`
+        ).join('');
+        box.style.display = 'block';
+      } catch (e) {}
+    }
+
+    function selectionnerPourRdv(c) {
+      document.getElementById('rdv-quick-suggest').style.display = 'none';
+      document.getElementById('rdv-quick-search').value = '';
+      preparerRdvDepuisFiche(c);
+    }
+
+    function majSecteurDepuisDate() {
+      const val = document.getElementById('rdv-date').value;
+      if (!val) return;
+      const d = new Date(val + 'T12:00:00');
+      const wd = d.getDay(); // 0=Dim, 4=Jeu, 5=Ven
+      document.getElementById('rdv-secteur').value = (wd === 4 || wd === 5) ? 'Saint-Pée-sur-Nivelle' : 'Urrugne';
+    }
+
+    async function creerRdv() {
+      const fb = document.getElementById('rdv-feedback');
+      const btn = document.getElementById('btn-creer-rdv');
+      const nom_animal = document.getElementById('rdv-animal').value.trim();
+      const date_proposee = document.getElementById('rdv-date').value;
+      const heure_debut = document.getElementById('rdv-heure').value;
+      if (!nom_animal || !date_proposee || !heure_debut) {
+        fb.className = 'alert-box alert-err';
+        fb.textContent = 'Merci de renseigner animal, date et heure.';
+        fb.style.display = 'block';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Inscription en cours...';
+      fb.style.display = 'none';
+      try {
+        const res = await apiFetch('/api/pro/rdv/creer', {
+          method: 'POST',
+          body: JSON.stringify({
+            nom_animal,
+            nom_maitre: document.getElementById('rdv-maitre').value.trim(),
+            race: document.getElementById('rdv-race').value.trim(),
+            telephone: document.getElementById('rdv-tel').value.trim(),
+            categorie: rdvCat,
+            duree_minutes: DUREES[rdvCat] || 60,
+            date_proposee,
+            heure_debut,
+            secteur: document.getElementById('rdv-secteur').value,
+            envoyer_sms: document.getElementById('rdv-sms').checked,
+          })
+        });
+        if (res.status === 'success') {
+          fb.className = 'alert-box alert-ok';
+          fb.textContent = '✅ ' + res.message;
+          fb.style.display = 'block';
+          toast('✅ RDV inscrit dans Google Agenda !');
+        } else {
+          fb.className = 'alert-box alert-err';
+          fb.textContent = '❌ ' + (res.message || 'Créneau indisponible');
+          fb.style.display = 'block';
+        }
+      } catch (e) {
+        fb.className = 'alert-box alert-err';
+        fb.textContent = '❌ Erreur réseau';
+        fb.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✅ Inscrire dans Google Agenda';
+      }
+    }
+
+    async function chargerAgenda() {
+      const list = document.getElementById('agenda-list');
+      list.innerHTML = '<div class="card" style="text-align:center; color:var(--muted);">Chargement de Google Agenda en direct...</div>';
+      try {
+        const data = await apiFetch('/api/pro/agenda');
+        if (data.status !== 'success') {
+          list.innerHTML = `<div class="card" style="color:#b91c1c;">❌ ${esc(data.message)}</div>`;
+          return;
+        }
+        if (!data.events || data.events.length === 0) {
+          list.innerHTML = '<div class="card">Aucun rendez-vous à venir sur les 35 prochains jours.</div>';
+          return;
+        }
+        const byDay = {};
+        data.events.forEach(ev => { (byDay[ev.date] = byDay[ev.date] || []).push(ev); });
+        list.innerHTML = Object.keys(byDay).sort().map(d => {
+          const evs = byDay[d];
+          const head = `<div class="day-header"><span>📅 ${esc(evs[0].date_fr)}</span><span class="day-pill">${esc(evs[0].secteur)} · ${evs.length} RDV</span></div>`;
+          const cards = evs.map(ev => {
+            const evJson = esc(JSON.stringify(ev));
+            const telBtn = ev.telephone ? `<a class="btn btn-outline btn-sm" href="tel:${esc(ev.telephone)}">📞 ${esc(ev.telephone)}</a>` : '';
+            return `<div class="card">
+              <div class="card-top">
+                <div>
+                  <div class="animal-name">${esc(ev.heure_debut)} – ${esc(ev.heure_fin)}</div>
+                  <div class="owner-name">${esc(ev.title)}</div>
+                </div>
+                <span class="badge cat-B">${ev.duree_minutes} min</span>
+              </div>
+              <div class="card-actions">
+                ${telBtn}
+                <button class="btn btn-outline btn-sm" onclick='ouvrirModalMove(${evJson})'>🔄 Déplacer</button>
+                <button class="btn btn-danger btn-sm" onclick='annulerRdv(${evJson})'>🗑️ Annuler</button>
+              </div>
+            </div>`;
+          }).join('');
+          return head + cards;
+        }).join('');
+      } catch (e) {
+        list.innerHTML = '<div class="card" style="color:#b91c1c;">Erreur de connexion à Google Agenda.</div>';
+      }
+    }
+
+    function ouvrirModalMove(ev) {
+      document.getElementById('mm-id').value = ev.id;
+      document.getElementById('mm-old-date').value = ev.date;
+      document.getElementById('mm-animal').value = (ev.title || '').split('\n').pop();
+      document.getElementById('mm-tel').value = ev.telephone || '';
+      document.getElementById('mm-dur').value = ev.duree_minutes || 60;
+      document.getElementById('mm-date').value = ev.date;
+      document.getElementById('mm-heure').value = ev.heure_debut;
+      document.getElementById('mm-label').textContent = `${ev.date_fr} à ${ev.heure_debut} — ${ev.title}`;
+      document.getElementById('modal-move').classList.add('open');
+    }
+    function fermerModalMove() { document.getElementById('modal-move').classList.remove('open'); }
+
+    async function confirmerMove() {
+      const btn = document.getElementById('mm-btn');
+      btn.disabled = true;
+      btn.textContent = 'Déplacement...';
+      try {
+        const res = await apiFetch('/api/pro/rdv/deplacer', {
+          method: 'POST',
+          body: JSON.stringify({
+            eventId: document.getElementById('mm-id').value,
+            old_date: document.getElementById('mm-old-date').value,
+            nom_animal: document.getElementById('mm-animal').value,
+            telephone: document.getElementById('mm-tel').value,
+            duree_minutes: Number(document.getElementById('mm-dur').value || 60),
+            new_date: document.getElementById('mm-date').value,
+            new_heure: document.getElementById('mm-heure').value,
+            envoyer_sms: document.getElementById('mm-sms').checked,
+          })
+        });
+        if (res.status === 'success') {
+          fermerModalMove();
+          toast('✅ Rendez-vous déplacé !');
+          chargerAgenda();
+        } else {
+          toast('❌ ' + (res.message || 'Déplacement impossible'));
+        }
+      } catch (e) {
+        toast('❌ Erreur réseau');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Valider';
+      }
+    }
+
+    async function annulerRdv(ev) {
+      if (!confirm(`Supprimer ce rendez-vous de Google Agenda ?\n\n${ev.date_fr} à ${ev.heure_debut}\n${ev.title}`)) return;
+      const envoyerSms = ev.telephone ? confirm(`Envoyer aussi le SMS d'annulation au ${ev.telephone} ?`) : false;
+      try {
+        const res = await apiFetch('/api/pro/rdv/annuler', {
+          method: 'POST',
+          body: JSON.stringify({
+            eventId: ev.id,
+            nom_animal: (ev.title || '').split('\n').pop(),
+            telephone: ev.telephone || '',
+            date: ev.date,
+            envoyer_sms: envoyerSms,
+          })
+        });
+        if (res.status === 'success') {
+          toast('🗑️ Rendez-vous annulé !');
+          chargerAgenda();
+        } else {
+          toast('❌ ' + (res.message || 'Impossible d\'annuler'));
+        }
+      } catch (e) {
+        toast('❌ Erreur réseau');
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (PRO_PIN) {
+        apiFetch('/api/pro/clients?q=').then(data => ouvrirApp(data)).catch(() => {});
+      }
+    });
+  </script>
+</body>
+</html>
