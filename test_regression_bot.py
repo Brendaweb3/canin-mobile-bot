@@ -512,6 +512,61 @@ class TestCaninBotRegression(unittest.TestCase):
             time.sleep(0.05)
             mock_sms_ok.assert_called_once()
 
+    def test_multiday_block_event_blocks_every_day_it_spans(self):
+        tz = timezone(timedelta(hours=1))
+        now_p = datetime.now(tz)
+        # Trouver un prochain mardi
+        days_ahead = (1 - now_p.weekday()) % 7
+        if days_ahead == 0:
+            days_ahead = 7
+        tuesday = (now_p + timedelta(days=days_ahead)).date()
+        # Événement de blocage sur 3 jours complets : mardi 00:00 -> vendredi 00:00
+        block_ev = [{
+            "id": "vac_1",
+            "start": datetime(tuesday.year, tuesday.month, tuesday.day, 0, 0, tzinfo=tz).isoformat(),
+            "end": (datetime(tuesday.year, tuesday.month, tuesday.day, 0, 0, tzinfo=tz) + timedelta(days=3)).isoformat(),
+            "title": "ARRET TECHNIQUE",
+            "description": "",
+        }]
+        expanded = ws._expand_live_events_to_appts(block_ev, tz)
+        dates_expanded = {a["date"] for a in expanded}
+        self.assertEqual(dates_expanded, {
+            tuesday.strftime("%Y-%m-%d"),
+            (tuesday + timedelta(days=1)).strftime("%Y-%m-%d"),
+            (tuesday + timedelta(days=2)).strftime("%Y-%m-%d"),
+        })
+        with patch.object(ws, "obtenir_evenements_google_calendar_direct", return_value=block_ev):
+            jours = ws.obtenir_tous_les_creneaux_disponibles("Urrugne", 60, "B", max_jours=5)
+            dispos_dates = {j["date"] for j in jours}
+            for d_blk in dates_expanded:
+                self.assertNotIn(d_blk, dispos_dates)
+
+    def test_pro_agenda_includes_calendar_name(self):
+        import io
+        tz = timezone(timedelta(hours=1))
+        tmr = (datetime.now(tz) + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+        fake_live = [{
+            "id": "ev_manuel_1",
+            "start": tmr.isoformat(),
+            "end": (tmr + timedelta(hours=1)).isoformat(),
+            "title": "MarilMarilyne",
+            "description": "",
+            "calendarName": "CANINS MANUEL",
+        }]
+        h = object.__new__(ws.WebhookHTTPHandler)
+        h.path = "/api/pro/agenda"
+        h.headers = {"X-Pro-Pin": ws.PRO_PIN}
+        h.wfile = io.BytesIO()
+        codes = []
+        h.send_response = lambda c: codes.append(c)
+        h.send_header = lambda k, v: None
+        h.end_headers = lambda: None
+        with patch.object(ws, "obtenir_evenements_google_calendar_direct", return_value=fake_live):
+            h.do_GET()
+        self.assertEqual(codes[0], 200)
+        res = json.loads(h.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(res["events"][0]["calendar_name"], "CANINS MANUEL")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

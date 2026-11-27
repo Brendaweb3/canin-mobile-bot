@@ -696,6 +696,42 @@ def construire_planning_live_pour_ia(live_events, nb_jours: int = 21) -> str:
     return "\n".join(lignes)
 
 
+def _expand_live_events_to_appts(live_events: list, tz) -> list:
+    """Convertit les événements Google Agenda (y compris multi-jours / journée entière) en créneaux bloqués par jour."""
+    appts = []
+    for lev in (live_events or []):
+        st_iso = lev.get("start", "")
+        end_iso = lev.get("end", "")
+        if not st_iso:
+            continue
+        try:
+            dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
+            dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
+            if dt_e <= dt_s:
+                dt_e = dt_s + timedelta(minutes=60)
+            titre = lev.get("title", "")
+            desc_raw = lev.get("description", "")
+            last_date = (dt_e - timedelta(seconds=1)).date()
+            cur_d = dt_s.date()
+            while cur_d <= last_date:
+                day_start = datetime(cur_d.year, cur_d.month, cur_d.day, 0, 0, tzinfo=tz)
+                day_end = day_start + timedelta(days=1)
+                eff_s = max(dt_s, day_start)
+                eff_e = min(dt_e, day_end)
+                dur_calc = max(30, int((eff_e - eff_s).total_seconds() // 60))
+                appts.append({
+                    "date": cur_d.strftime("%Y-%m-%d"),
+                    "time": eff_s.strftime("%H:%M:00"),
+                    "duration": dur_calc,
+                    "title": titre,
+                    "description": f"{titre} | {desc_raw}"
+                })
+                cur_d += timedelta(days=1)
+        except Exception as e_parse:
+            log(f"[PARSE ERR] : {e_parse}")
+    return appts
+
+
 def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: str = 'B') -> tuple:
     tz = _get_paris_tz()
     now_paris = datetime.now(tz)
@@ -705,28 +741,7 @@ def trouver_premier_creneau_disponible(secteur: str, duree_minutes: int, cat: st
         log("[CALENDAR UNAVAILABLE] Impossible de calculer un créneau sans Google Agenda en direct.")
         return None, None, None
 
-    appts = []
-    for lev in live_events:
-        st_iso = lev.get("start", "")
-        end_iso = lev.get("end", "")
-        if st_iso:
-            try:
-                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
-                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
-                d_part = dt_s.strftime("%Y-%m-%d")
-                h_clean = dt_s.strftime("%H:%M")
-                dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
-                titre = lev.get("title", "")
-                desc_raw = lev.get("description", "")
-                appts.append({
-                    "date": d_part,
-                    "time": f"{h_clean}:00",
-                    "duration": dur_calc,
-                    "title": titre,
-                    "description": f"{titre} | {desc_raw}"
-                })
-            except Exception as e_parse:
-                log(f"[PARSE ERR] : {e_parse}")
+    appts = _expand_live_events_to_appts(live_events, tz)
 
     valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
 
@@ -1287,26 +1302,7 @@ def obtenir_tous_les_creneaux_disponibles(secteur: str, duree_minutes: int, cat:
         log("[CALENDAR UNAVAILABLE] Impossible de lister les créneaux sans Google Agenda en direct.")
         return None
 
-    appts = []
-    for lev in live_events:
-        st_iso = lev.get("start", "")
-        end_iso = lev.get("end", "")
-        if st_iso:
-            try:
-                dt_s = datetime.fromisoformat(st_iso.replace("Z", "+00:00")).astimezone(tz)
-                dt_e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz) if end_iso else (dt_s + timedelta(minutes=60))
-                dur_calc = max(30, int((dt_e - dt_s).total_seconds() // 60))
-                titre = lev.get("title", "")
-                desc_raw = lev.get("description", "")
-                appts.append({
-                    "date": dt_s.strftime("%Y-%m-%d"),
-                    "time": dt_s.strftime("%H:%M:00"),
-                    "duration": dur_calc,
-                    "title": titre,
-                    "description": f"{titre} | {desc_raw}"
-                })
-            except Exception:
-                pass
+    appts = _expand_live_events_to_appts(live_events, tz)
 
     valid_weekdays = [1, 2, 5] if "urrugne" in (secteur or "").lower() else [3, 4]
     cur_date = now_paris.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
@@ -1497,7 +1493,8 @@ class WebhookHTTPHandler(BaseHTTPRequestHandler):
                         "title": titre,
                         "description": desc,
                         "telephone": _extraire_mobile_fr(titre, desc),
-                        "secteur": deduire_secteur_par_date(d_str)
+                        "secteur": deduire_secteur_par_date(d_str),
+                        "calendar_name": ev.get("calendarName", "CANINS MOBILE")
                     })
                 except Exception:
                     pass

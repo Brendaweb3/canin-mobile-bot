@@ -1,7 +1,7 @@
 // =========================================================================
 // GOOGLE APPS SCRIPT POUR LA CANIN MOBILE (SANDRINE HIRIART)
 // Agenda ID : 7617be8edad0ef0e86a8b6c2f0b50ab7cc9d0c60e3cf40a512f40542ed3d849c@group.calendar.google.com
-// Version 4 : Lecture + Insertion + Suppression + Déplacement + Base Catégories (Google Sheet)
+// Version 11 : Multi-agendas temps réel (CANINS MOBILE + CANINS MANUEL + Sandrine Perso)
 // =========================================================================
 
 var CALENDAR_ID = "7617be8edad0ef0e86a8b6c2f0b50ab7cc9d0c60e3cf40a512f40542ed3d849c@group.calendar.google.com";
@@ -185,6 +185,66 @@ function findMatchingEvent(cal, targetDate, targetNom, targetTel, eventId, targe
   return null;
 }
 
+function getActiveWorkCalendars() {
+  var result = [];
+  var seen = {};
+  var mainCal = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (mainCal) {
+    result.push({ cal: mainCal, name: mainCal.getName() || "CANINS MOBILE", mode: "full" });
+    seen[mainCal.getId()] = true;
+  }
+  try {
+    var allCals = CalendarApp.getAllCalendars();
+    for (var i = 0; i < allCals.length; i++) {
+      var c = allCals[i];
+      var cid = c.getId();
+      if (seen[cid]) continue;
+      var n = normalizeText(c.getName());
+      if (!n) continue;
+      if (n.indexOf("anniversaire") !== -1 || n.indexOf("birthday") !== -1 || n.indexOf("ferie") !== -1 || n.indexOf("holiday") !== -1 || n.indexOf("task") !== -1) {
+        continue;
+      }
+      if (n.indexOf("canins") !== -1 || n.indexOf("canin") !== -1) {
+        result.push({ cal: c, name: c.getName(), mode: "full" });
+        seen[cid] = true;
+      } else if (n.indexOf("sandrine") !== -1 || (typeof c.isMyPrimaryCalendar === "function" && c.isMyPrimaryCalendar())) {
+        result.push({ cal: c, name: c.getName(), mode: "timed_or_block" });
+        seen[cid] = true;
+      }
+    }
+  } catch (eAll) {}
+  return result;
+}
+
+function shouldIncludeEvent(ev, mode) {
+  if (mode === "full") return true;
+  if (!ev.isAllDayEvent()) return true;
+  var t = normalizeText(ev.getTitle());
+  return /indispo|cong|vacance|ferme|arret|bloque|repos|maroc/.test(t);
+}
+
+function findMatchingEventAcrossCalendars(workCals, targetDate, targetNom, targetTel, eventId, targetMaitre) {
+  for (var i = 0; i < workCals.length; i++) {
+    var ev = findMatchingEvent(workCals[i].cal, targetDate, targetNom, targetTel, eventId, targetMaitre);
+    if (ev) return ev;
+  }
+  return null;
+}
+
+function findConflictAcrossCalendars(workCals, start, end, excludeEventId) {
+  for (var i = 0; i < workCals.length; i++) {
+    var entry = workCals[i];
+    var conflicts = entry.cal.getEvents(start, end);
+    for (var j = 0; j < conflicts.length; j++) {
+      var ev = conflicts[j];
+      if (excludeEventId && ev.getId() === excludeEventId) continue;
+      if (!shouldIncludeEvent(ev, entry.mode)) continue;
+      return { title: ev.getTitle() || "RDV", calendarName: entry.name };
+    }
+  }
+  return null;
+}
+
 function jsonOut(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
@@ -202,28 +262,40 @@ function doGet(e) {
       });
     }
 
-    var cal = CalendarApp.getCalendarById(CALENDAR_ID);
-    if (!cal) return jsonOut({ status: "error", message: "Agenda introuvable" });
+    var workCals = getActiveWorkCalendars();
+    if (workCals.length === 0) return jsonOut({ status: "error", message: "Agenda introuvable" });
 
     var startParam = e && e.parameter && e.parameter.start ? new Date(e.parameter.start) : new Date(2026, 10, 24);
     var endParam = e && e.parameter && e.parameter.end ? new Date(e.parameter.end) : new Date(2027, 2, 1);
 
-    var events = cal.getEvents(startParam, endParam);
     var list = [];
+    var seenEvIds = {};
+    var calNames = [];
 
-    for (var i = 0; i < events.length; i++) {
-      var ev = events[i];
-      list.push({
-        id: ev.getId(),
-        title: ev.getTitle(),
-        start: ev.getStartTime().toISOString(),
-        end: ev.getEndTime().toISOString(),
-        created: ev.getDateCreated() ? ev.getDateCreated().toISOString() : "",
-        description: ev.getDescription() || ""
-      });
+    for (var cIdx = 0; cIdx < workCals.length; cIdx++) {
+      var entry = workCals[cIdx];
+      calNames.push(entry.name);
+      var events = entry.cal.getEvents(startParam, endParam);
+      for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        var evId = ev.getId();
+        if (seenEvIds[evId]) continue;
+        if (!shouldIncludeEvent(ev, entry.mode)) continue;
+        seenEvIds[evId] = true;
+        list.push({
+          id: evId,
+          title: ev.getTitle(),
+          start: ev.getStartTime().toISOString(),
+          end: ev.getEndTime().toISOString(),
+          allDay: ev.isAllDayEvent(),
+          calendarName: entry.name,
+          created: ev.getDateCreated() ? ev.getDateCreated().toISOString() : "",
+          description: ev.getDescription() || ""
+        });
+      }
     }
 
-    return jsonOut({ status: "success", count: list.length, events: list });
+    return jsonOut({ status: "success", count: list.length, calendars: calNames, events: list });
   } catch (err) {
     return jsonOut({ status: "error", message: err.toString() });
   }
@@ -267,10 +339,11 @@ function doPost(e) {
 
     var cal = CalendarApp.getCalendarById(CALENDAR_ID);
     if (!cal) return jsonOut({ status: "error", message: "Agenda introuvable" });
+    var workCals = getActiveWorkCalendars();
 
     // 1. ACTION DE SUPPRESSION RÉELLE D'UN RENDEZ-VOUS ANNULÉ
     if (data.action === "delete") {
-      var evDel = findMatchingEvent(cal, data.date || "", data.nom_animal || "", data.telephone || "", data.eventId || "", data.nom_maitre || "");
+      var evDel = findMatchingEventAcrossCalendars(workCals, data.date || "", data.nom_animal || "", data.telephone || "", data.eventId || "", data.nom_maitre || "");
       if (!evDel) {
         return jsonOut({ status: "not_found", deleted_count: 0, message: "Rendez-vous introuvable dans Google Agenda" });
       }
@@ -290,17 +363,15 @@ function doPost(e) {
 
     // 2. ACTION DE DÉPLACEMENT SÉCURISÉ D'UN RENDEZ-VOUS EXISTANT
     if (data.action === "move") {
-      var evMove = findMatchingEvent(cal, data.old_date || "", data.nom_animal || "", data.telephone || "", data.eventId || "", data.nom_maitre || "");
+      var evMove = findMatchingEventAcrossCalendars(workCals, data.old_date || "", data.nom_animal || "", data.telephone || "", data.eventId || "", data.nom_maitre || "");
       if (!evMove) {
         return jsonOut({ status: "not_found", message: "Rendez-vous d'origine introuvable pour " + (data.nom_animal || "") });
       }
       var newStart = new Date(data.new_start);
       var newEnd = new Date(data.new_end);
-      var moveConflicts = cal.getEvents(newStart, newEnd);
-      for (var c = 0; c < moveConflicts.length; c++) {
-        if (moveConflicts[c].getId() !== evMove.getId()) {
-          return jsonOut({ status: "conflict", message: "Créneau déjà occupé par : " + moveConflicts[c].getTitle() });
-        }
+      var moveConflict = findConflictAcrossCalendars(workCals, newStart, newEnd, evMove.getId());
+      if (moveConflict) {
+        return jsonOut({ status: "conflict", message: "Créneau déjà occupé dans " + moveConflict.calendarName + " par : " + moveConflict.title });
       }
       evMove.setTime(newStart, newEnd);
       var shStr = Utilities.formatDate(newStart, "Europe/Paris", "HH'h'mm");
@@ -330,9 +401,9 @@ function doPost(e) {
     var start = new Date(data.start);
     var end = new Date(data.end);
 
-    var conflicts = cal.getEvents(start, end);
-    if (conflicts.length > 0) {
-      return jsonOut({ status: "conflict", message: "Créneau déjà occupé dans Google Calendar" });
+    var conflict = findConflictAcrossCalendars(workCals, start, end, "");
+    if (conflict) {
+      return jsonOut({ status: "conflict", message: "Créneau déjà occupé dans " + conflict.calendarName + " par : " + conflict.title });
     }
 
     var event = cal.createEvent(data.title, start, end, {

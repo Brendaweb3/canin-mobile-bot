@@ -743,7 +743,10 @@
                   <div class="animal-name">${esc(ev.heure_debut)} – ${esc(ev.heure_fin)}</div>
                   <div class="owner-name">${esc(ev.title)}</div>
                 </div>
-                <span class="badge cat-B">${ev.duree_minutes} min</span>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                  <span class="badge cat-B">${ev.duree_minutes} min</span>
+                  ${ev.calendar_name && ev.calendar_name !== 'CANINS MOBILE' ? `<span class="badge cat-C">${esc(ev.calendar_name)}</span>` : ''}
+                </div>
               </div>
               <div class="card-actions">
                 ${telBtn}
